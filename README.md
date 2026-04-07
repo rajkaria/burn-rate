@@ -35,18 +35,18 @@ There's no cost counter. No warning. Nothing. You're flying blind.
 **Burn Rate is the missing fuel gauge.**
 
 ```
-BURN RATE [15 prompts | ~$7.50]: Consider wrapping up soon.
+BURN RATE [15 prompts | 8.2M tokens | ~$7.50]: Consider wrapping up soon.
 Run /save-context before starting a new session.
 ```
 
 ```
-BURN RATE [25 prompts | ~$18.50]: Session getting costly.
+BURN RATE [25 prompts | 42.1M tokens | ~$18.50]: Session getting costly.
 Run /save-context and start fresh.
 ```
 
 ```
-BURN RATE [40 prompts | ~$53.50]: Session is VERY expensive.
-Run /save-context and start a new session NOW.
+BURN RATE [40 prompts | 127.5M tokens | ~$53.50]: Session is VERY expensive.
+Each message re-sends the full 127.5M context. Run /save-context and start a new session NOW.
 ```
 
 ## Install (30 seconds)

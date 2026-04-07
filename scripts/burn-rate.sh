@@ -43,15 +43,62 @@ fi
 # --- Count user messages ---
 USER_MSG_COUNT=$(grep -c '"type":"user"' "$SESSION_FILE" 2>/dev/null || echo "0")
 
-# --- Detect model (for cost estimation accuracy) ---
-# Check first assistant message for model info; default to opus
-MODEL="opus"
-MODEL_LINE=$(grep -m1 '"model"' "$SESSION_FILE" 2>/dev/null || true)
-if echo "$MODEL_LINE" | grep -qi "haiku" 2>/dev/null; then
-  MODEL="haiku"
-elif echo "$MODEL_LINE" | grep -qi "sonnet" 2>/dev/null; then
-  MODEL="sonnet"
-fi
+# --- Read actual token usage from session JSONL ---
+# Extract token counts from assistant message usage fields
+# This gives us real numbers, not estimates
+TOKEN_DATA=$(python3 -c "
+import json, sys
+total_input = 0
+total_cache_create = 0
+total_cache_read = 0
+total_output = 0
+model = 'opus'
+try:
+    with open('$SESSION_FILE') as f:
+        for line in f:
+            try:
+                obj = json.loads(line)
+            except:
+                continue
+            if obj.get('type') == 'assistant':
+                u = obj.get('message', {}).get('usage', {})
+                total_input += u.get('input_tokens', 0)
+                total_cache_create += u.get('cache_creation_input_tokens', 0)
+                total_cache_read += u.get('cache_read_input_tokens', 0)
+                total_output += u.get('output_tokens', 0)
+                m = obj.get('message', {}).get('model', '')
+                if 'haiku' in m.lower():
+                    model = 'haiku'
+                elif 'sonnet' in m.lower():
+                    model = 'sonnet'
+except:
+    pass
+total = total_input + total_cache_create + total_cache_read + total_output
+print(f'{total} {total_input} {total_cache_create} {total_cache_read} {total_output} {model}')
+" 2>/dev/null || echo "0 0 0 0 0 opus")
+
+TOTAL_TOKENS=$(echo "$TOKEN_DATA" | awk '{print $1}')
+INPUT_TOKENS=$(echo "$TOKEN_DATA" | awk '{print $2}')
+CACHE_CREATE=$(echo "$TOKEN_DATA" | awk '{print $3}')
+CACHE_READ=$(echo "$TOKEN_DATA" | awk '{print $4}')
+OUTPUT_TOKENS=$(echo "$TOKEN_DATA" | awk '{print $5}')
+MODEL=$(echo "$TOKEN_DATA" | awk '{print $6}')
+
+# --- Format token count for display ---
+format_tokens() {
+  local n=$1
+  if [ "$n" -ge 1000000000 ]; then
+    echo "$((n / 1000000000)).$(( (n % 1000000000) / 100000000 ))B"
+  elif [ "$n" -ge 1000000 ]; then
+    echo "$((n / 1000000)).$(( (n % 1000000) / 100000 ))M"
+  elif [ "$n" -ge 1000 ]; then
+    echo "$((n / 1000)).$(( (n % 1000) / 100 ))K"
+  else
+    echo "$n"
+  fi
+}
+
+TOKEN_FMT=$(format_tokens "$TOTAL_TOKENS")
 
 # --- Count subagents ---
 SESSION_STEM=$(basename "$SESSION_FILE" .jsonl)
@@ -61,43 +108,31 @@ if [ -d "$SESSION_DIR/subagents" ]; then
   SUBAGENT_COUNT=$(find "$SESSION_DIR/subagents" -name "*.jsonl" -type f 2>/dev/null | wc -l | tr -d ' ')
 fi
 
-# --- Estimate cost ---
-# Empirical model from analyzing 27 real sessions.
-# Context grows per-turn; cache reads dominate (~96% of input).
-# Cost multipliers by model (relative to Opus):
-#   Opus:   1.0x  ($15/1M input, $75/1M output)
-#   Sonnet: 0.2x  ($3/1M input, $15/1M output)
-#   Haiku:  0.05x ($0.80/1M input, $4/1M output)
-estimate_cost() {
-  local prompts=$1
-  local subs=$2
-  local base_cost=0
-
-  # Base cost in cents (calibrated for Opus 4.6)
-  if [ "$prompts" -le 10 ]; then
-    base_cost=$((prompts * 30))
-  elif [ "$prompts" -le 20 ]; then
-    base_cost=$(( 300 + (prompts - 10) * 80 ))
-  elif [ "$prompts" -le 35 ]; then
-    base_cost=$(( 1100 + (prompts - 20) * 150 ))
-  else
-    base_cost=$(( 3350 + (prompts - 35) * 250 ))
-  fi
-
-  # Add subagent cost (~$1.00 avg per subagent for Opus)
-  local sub_cost=$((subs * 100))
-  local total=$(( base_cost + sub_cost ))
-
-  # Apply model multiplier
+# --- Estimate cost from actual tokens ---
+# Pricing per 1M tokens (in hundredths of a cent for integer math):
+#   Opus:   input=$15, cache_create=$18.75, cache_read=$1.88, output=$75
+#   Sonnet: input=$3,  cache_create=$3.75,  cache_read=$0.30, output=$15
+#   Haiku:  input=$0.80, cache_create=$1.00, cache_read=$0.08, output=$4
+# We compute in microdollars (1M microdollars = $1) then convert to cents
+estimate_cost_from_tokens() {
+  local cost_micros=0
   case "$MODEL" in
-    haiku)  total=$(( total * 5 / 100 )) ;;  # 5% of Opus cost
-    sonnet) total=$(( total * 20 / 100 )) ;;  # 20% of Opus cost
+    opus)
+      cost_micros=$(( INPUT_TOKENS * 15 + CACHE_CREATE * 19 + CACHE_READ * 2 + OUTPUT_TOKENS * 75 ))
+      ;;
+    sonnet)
+      cost_micros=$(( INPUT_TOKENS * 3 + CACHE_CREATE * 4 + CACHE_READ * 1 + OUTPUT_TOKENS * 15 ))
+      ;;
+    haiku)
+      cost_micros=$(( INPUT_TOKENS * 1 + CACHE_CREATE * 1 + CACHE_READ * 1 + OUTPUT_TOKENS * 4 ))
+      ;;
   esac
-
-  echo "$total"
+  # Convert from microdollars-per-million to cents: divide by 1M, multiply by 100
+  # Simplified: divide by 10000
+  echo $(( cost_micros / 10000 ))
 }
 
-COST_CENTS=$(estimate_cost "$USER_MSG_COUNT" "$SUBAGENT_COUNT")
+COST_CENTS=$(estimate_cost_from_tokens)
 COST_DOLLARS=$((COST_CENTS / 100))
 COST_REMAINDER=$((COST_CENTS % 100))
 COST_FMT="\$${COST_DOLLARS}.$(printf '%02d' $COST_REMAINDER)"
@@ -105,7 +140,7 @@ COST_FMT="\$${COST_DOLLARS}.$(printf '%02d' $COST_REMAINDER)"
 # Model label for display
 MODEL_LABEL=""
 if [ "$MODEL" != "opus" ]; then
-  MODEL_LABEL=" (${MODEL})"
+  MODEL_LABEL=" ${MODEL}"
 fi
 
 # --- Build output ---
@@ -113,11 +148,11 @@ PARTS=()
 
 # Prompt count warnings
 if [ "$USER_MSG_COUNT" -ge "$URGENT_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}${MODEL_LABEL}]: Session is VERY expensive — each message re-sends ~${USER_MSG_COUNT}x context. Run /save-context and start a new session NOW.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens | ~${COST_FMT}${MODEL_LABEL}]: Session is VERY expensive — each message re-sends the full ${TOKEN_FMT} context. Run /save-context and start a new session NOW.")
 elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}${MODEL_LABEL}]: Session getting costly. Run /save-context and start fresh.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens | ~${COST_FMT}${MODEL_LABEL}]: Session getting costly. Run /save-context and start fresh.")
 elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}${MODEL_LABEL}]: Consider wrapping up soon. Run /save-context before starting a new session.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens | ~${COST_FMT}${MODEL_LABEL}]: Consider wrapping up soon. Run /save-context before starting a new session.")
 fi
 
 # Subagent storm warnings
