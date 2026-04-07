@@ -197,7 +197,7 @@ An all-day session without breaks. You and Claude going back and forth for hours
 
 ### The file that got read 42 times
 
-Real stat: `roundEngine.ts` was read 42 times in one session. Why? Because after context compaction, Claude forgets what it already read and reads it again. And again. And again.
+Real stat: one file was read 42 times in a single session. Why? Because after context compaction, Claude forgets what it already read and reads it again. And again. And again.
 
 **Instead:** Short sessions mean less compaction. Less compaction means fewer re-reads.
 
