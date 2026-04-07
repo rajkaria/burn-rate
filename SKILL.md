@@ -6,7 +6,7 @@ description: |
 origin: community
 metadata:
   author: rajkaria
-  version: "2.1.0"
+  version: "3.0.0"
   license: MIT
 ---
 
@@ -25,12 +25,12 @@ Watch your tokens burn in real-time. Warns before sessions get expensive, detect
 
 Claude Code sessions are **exponentially expensive** as they grow. Each message re-sends the entire conversation. Real-world data from power users:
 
-| Session Length | Typical Cost | Tokens |
-|---------------|-------------|--------|
-| 10 prompts | ~$2-5 | 1-5M |
-| 25 prompts | ~$15-30 | 30-80M |
-| 50 prompts | ~$50-100 | 100-300M |
-| 100+ prompts | ~$100-250 | 300M-550M |
+| Session Length | Typical Cost (Opus 4.6) | Tokens |
+|---------------|-------------------------|--------|
+| 10 prompts | ~$0.50-2 | 1-5M |
+| 25 prompts | ~$5-10 | 10-30M |
+| 50 prompts | ~$15-40 | 30-100M |
+| 100+ prompts | ~$40-100 | 100-300M |
 
 ## The Five Anti-Patterns
 
@@ -125,17 +125,18 @@ curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/install.sh 
 
 ## Cost Estimation Model
 
-Based on Opus 4.6 pricing ($15/1M input, $75/1M output, cache reads at $1.88/1M):
+Based on Opus 4.6 pricing ($5/MTok input, $6.25/MTok cache write, $0.50/MTok cache read, $25/MTok output).
+Reads actual token counts from session JSONL and uses `pricing.json` for rates (user-updatable when prices change).
 
 | Prompts | Estimated Cost | Action |
 |---------|---------------|--------|
-| 1-10 | $0.50 - $3 | Normal |
-| 10-15 | $3 - $10 | Plan to wrap up |
-| 15-25 | $10 - $30 | Save context, start fresh |
-| 25-40 | $30 - $80 | Urgently end session |
-| 40-100 | $80 - $250+ | Burning money |
+| 1-10 | $0.20 - $1 | Normal |
+| 10-15 | $1 - $3 | Plan to wrap up |
+| 15-25 | $3 - $8 | Save context, start fresh |
+| 25-40 | $8 - $20 | Urgently end session |
+| 40-100 | $20 - $80+ | Burning money |
 
-Subagents add ~$1.00 each on average to the session cost.
+Subagents add ~$0.30-0.50 each on average to the session cost.
 
 ## Compatibility
 

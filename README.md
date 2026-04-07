@@ -5,27 +5,27 @@ You just don't know it yet.
 I analyzed my usage and found this:
 
 ```
-Session 1:  "build everything from the spec"      →  $221
-Session 2:  "strategize and start the build"       →  $111
-Session 3:   184 messages in one sitting            →  $133
-─────────────────────────────────────────────────────────────
-Top 5 sessions                                      →  $621
+Session 1:  "build everything from the spec"      →  $375  (567M tokens)
+Session 2:   1,703 messages in one sitting          →  $222  (294M tokens)
+Session 3:  "strategize and start the build"       →  $185  (297M tokens)
+──────────────────────────────────────────────────────────────────────────
+Top 5 sessions                                      →  $1,043
 ```
 
-The same work, split into short focused sessions: **~$120.**
+The same work, split into short focused sessions: **~$200.**
 
-That's **$500 wasted** because nobody told me to stop.
+That's **$800+ wasted** because nobody told me to stop.
 
 ## The thing Anthropic doesn't show you
 
 Every message re-sends your **entire conversation**. The cost per message grows with every turn:
 
 ```
-Message 1  ░                          $0.30
-Message 10 ░░░░                       $0.80
-Message 25 ░░░░░░░░░░                 $1.50
-Message 50 ░░░░░░░░░░░░░░░░░         $2.50
-Message 100░░░░░░░░░░░░░░░░░░░░░░░░  $2.50+
+Message 1  ░                          $0.10
+Message 10 ░░░░                       $0.25
+Message 25 ░░░░░░░░░░                 $0.50
+Message 50 ░░░░░░░░░░░░░░░░░         $0.80
+Message 100░░░░░░░░░░░░░░░░░░░░░░░░  $1.00+
 ```
 
 By message 50, you've spent more on re-reading old context than on actual work.
@@ -35,18 +35,18 @@ There's no cost counter. No warning. Nothing. You're flying blind.
 **Burn Rate is the missing fuel gauge.**
 
 ```
-BURN RATE [15 prompts | 8.2M tokens | ~$7.50]: Consider wrapping up soon.
+BURN RATE [15 prompts | 8.2M tokens | ~$2.50]: Consider wrapping up soon.
 Run /save-context before starting a new session.
 ```
 
 ```
-BURN RATE [25 prompts | 42.1M tokens | ~$18.50]: Session getting costly.
+BURN RATE [25 prompts | 22.5M tokens | ~$6.80]: Session getting costly.
 Run /save-context and start fresh.
 ```
 
 ```
-BURN RATE [40 prompts | 127.5M tokens | ~$53.50]: Session is VERY expensive.
-Each message re-sends the full 127.5M context. Run /save-context and start a new session NOW.
+BURN RATE [40 prompts | 58.3M tokens | ~$18.40]: Session is VERY expensive.
+Each message re-sends the full 58.3M context. Run /save-context and start a new session NOW.
 ```
 
 ## Install (30 seconds)
@@ -98,19 +98,19 @@ You: "Use JWT, add refresh tokens"
 You: "Add the login page"
   ... working away ...
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ BURN RATE [15 prompts | ~$7.50]: Consider wrapping up soon.        │
-│ Run /save-context before starting a new session.                   │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [15 prompts | 8.2M tokens | ~$2.50]: Consider wrapping up    │
+│ soon. Run /save-context before starting a new session.                  │
+└──────────────────────────────────────────────────────────────────────────┘
 
 You: (keeps going anyway)
 You: "Add the signup page too"
   ... 10 more messages ...
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ BURN RATE [25 prompts | ~$18.50]: Session getting costly.          │
-│ Run /save-context and start fresh.                                 │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [25 prompts | 22.5M tokens | ~$6.80]: Session getting costly. │
+│ Run /save-context and start fresh.                                      │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 That's your cue.
@@ -159,7 +159,7 @@ Claude: [reads CLAUDE.md]
  Let me pick up from the form validation..."
 ```
 
-**Two sessions. $15 total. Instead of one monster session for $80.**
+**Two sessions. ~$5 total. Instead of one monster session for $30+.**
 
 ### `/burn-rate` — check your stats anytime
 
@@ -167,7 +167,7 @@ Don't want to wait for a warning? Just ask:
 
 ```
 You: /burn-rate
-Claude: "Current session: 8 prompts, ~$3.20 estimated cost,
+Claude: "Current session: 8 prompts, 3.1M tokens, ~$1.20 estimated cost,
          2 subagents spawned. You're in the safe zone."
 ```
 
@@ -177,7 +177,7 @@ Claude: "Current session: 8 prompts, ~$3.20 estimated cost,
 
 You paste a 20K character spec and say "implement this."
 
-Claude spawns 60 parallel agents. Each one loads your entire project context. Your one message just cost $50 in subagent overhead alone.
+Claude spawns 60 parallel agents. Each one loads your entire project context. Your one prompt just cost $20+ in subagent overhead alone.
 
 **Instead:** "Implement the auth module from section 3 of `docs/SPEC.md`"
 
@@ -189,7 +189,7 @@ That error log you just pasted? 60,000 characters. It's now part of every messag
 
 ### The all-day session
 
-184 messages. You and Claude going back and forth for 8 hours. By message 100, Claude is re-reading 300MB of context every time you say "ok" or "yes do that."
+184 messages. You and Claude going back and forth for 8 hours. By message 100, Claude is re-reading 200M+ tokens of context every time you say "ok" or "yes do that."
 
 **Instead:** `/save-context` every 15-20 messages. Start fresh. It's free and takes 5 seconds.
 

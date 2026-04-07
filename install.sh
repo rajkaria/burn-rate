@@ -92,6 +92,10 @@ info "Installed /save-context command"
 fetch_file "commands/burn-rate.md" "$COMMANDS_DIR/burn-rate.md"
 info "Installed /burn-rate command"
 
+# --- Install pricing.json ---
+fetch_file "pricing.json" "$SCRIPTS_DIR/pricing.json"
+info "Installed pricing.json (edit to update when Anthropic changes rates)"
+
 # --- Update settings.json with hook ---
 if [ -f "$SETTINGS_FILE" ]; then
   if grep -q "burn-rate" "$SETTINGS_FILE" 2>/dev/null; then
