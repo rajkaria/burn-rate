@@ -44,8 +44,35 @@ if [ -z "$SESSION_FILE" ]; then
   exit 0
 fi
 
-# --- Count user messages ---
-USER_MSG_COUNT=$(grep -c '"type":"user"' "$SESSION_FILE" 2>/dev/null || echo "0")
+# --- Count ACTUAL human prompts (not tool results) ---
+# "type":"user" includes tool results which inflates the count 10x.
+# We count only real human messages by excluding tool_result content.
+USER_MSG_COUNT=$(python3 -c "
+import json
+count = 0
+try:
+    with open('$SESSION_FILE') as f:
+        for line in f:
+            try:
+                obj = json.loads(line)
+            except:
+                continue
+            if obj.get('type') != 'user':
+                continue
+            if obj.get('isSidechain', False):
+                continue
+            if obj.get('userType', '') == 'tool':
+                continue
+            content = obj.get('message', {}).get('content', '')
+            if isinstance(content, list):
+                types = [i.get('type') for i in content if isinstance(i, dict)]
+                if types and all(t == 'tool_result' for t in types):
+                    continue
+            count += 1
+except:
+    pass
+print(count)
+" 2>/dev/null || echo "0")
 
 # --- Read actual token usage + compute cost from session JSONL ---
 # Uses pricing.json (from plugin dir or ~/.claude/scripts/) for accurate rates.
