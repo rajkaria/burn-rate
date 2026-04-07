@@ -40,11 +40,42 @@ Injects rules into Claude's global instructions to push back on wasteful pattern
 
 ## Install
 
+### As a Claude Code Plugin (Recommended)
+
+```bash
+claude plugins add burn-rate --marketplace https://github.com/rajkaria/burn-rate
+```
+
+Or add it manually to your `~/.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "burn-rate": {
+      "source": {
+        "source": "github",
+        "repo": "rajkaria/burn-rate"
+      }
+    }
+  }
+}
+```
+
+Then enable it:
+
+```bash
+claude plugins enable burn-rate
+```
+
+### Quick Install (Script)
+
+If you prefer a standalone install without the plugin system:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/install.sh | bash
 ```
 
-Or clone and install locally:
+### From Source
 
 ```bash
 git clone https://github.com/rajkaria/burn-rate.git
@@ -88,11 +119,23 @@ Start Claude Code in the same project. It reads the `CLAUDE.md` and has full con
 
 ## What Gets Installed
 
+**Plugin install** — everything is managed by Claude Code's plugin system:
+
+| Component | What It Does |
+|-----------|-------------|
+| Hook (`UserPromptSubmit`) | Fires on every prompt — counts messages, estimates cost, detects subagent storms |
+| `/save-context` command | Saves session state to project CLAUDE.md |
+| `/burn-rate` command | Check stats on demand |
+| Rules | Session management rules injected into Claude's behavior |
+| Skill | Anti-pattern detection guidance |
+
+**Script install** — files are copied directly:
+
 | File | Purpose |
 |------|---------|
-| `~/.claude/scripts/burn-rate.sh` | Hook script (prompt counter + cost estimator + subagent detector) |
-| `~/.claude/commands/burn-rate.md` | `/burn-rate` on-demand stats command |
-| `~/.claude/commands/save-context.md` | `/save-context` slash command |
+| `~/.claude/scripts/burn-rate.sh` | Hook script |
+| `~/.claude/commands/burn-rate.md` | `/burn-rate` command |
+| `~/.claude/commands/save-context.md` | `/save-context` command |
 | `~/.claude/CLAUDE.md` | Global rules (appended if file exists) |
 | `~/.claude/settings.json` | Hook registration (merged safely) |
 
@@ -115,14 +158,14 @@ The hook script:
 
 ## Uninstall
 
+**Plugin install:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/uninstall.sh | bash
+claude plugins disable burn-rate
 ```
 
-Or if you cloned the repo:
-
+**Script install:**
 ```bash
-bash uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/uninstall.sh | bash
 ```
 
 ## Contributing
