@@ -1,10 +1,10 @@
-# Session Guard for Claude Code
+# Burn Rate
 
-Stop burning tokens on monster sessions. Session Guard monitors your Claude Code usage in real-time, warns before sessions get expensive, and preserves context so fresh sessions aren't cold starts.
+Watch your Claude Code tokens burn in real-time. Get warned before sessions get expensive, detect wasteful patterns, and preserve context so fresh sessions aren't cold starts.
 
 ## The Problem
 
-Every message in a Claude Code session re-sends the **entire conversation history**. A 100-prompt session costs ~100x more per message than the first message. Real-world data from power users:
+Every message in a Claude Code session re-sends the **entire conversation history**. A 100-prompt session costs ~100x more per message than the first. But there's zero cost feedback during a session — you only find out after.
 
 | Session Length | Estimated Cost | What Happens |
 |---------------|---------------|--------------|
@@ -13,43 +13,37 @@ Every message in a Claude Code session re-sends the **entire conversation histor
 | 50 prompts | $50-100 | Wasteful |
 | 100+ prompts | $100-250+ | Burning money |
 
-Most users don't realize this because there's no feedback loop. Session Guard fixes that.
-
 ## What It Does
 
-**1. Real-time prompt counter with cost estimates**
-A `UserPromptSubmit` hook fires on every message, showing your prompt count and estimated cost:
+### 1. Real-time burn rate monitor
+A `UserPromptSubmit` hook fires on every message with your prompt count and estimated cost:
 ```
-SESSION GUARD [25 prompts | ~$18.50 est.]: Session getting costly.
-Run /save-context and start a fresh session to save money.
+BURN RATE [25 prompts | ~$18.50]: Session getting costly.
+Run /save-context and start fresh.
 ```
 
-**2. Anti-pattern detection**
-Warns about subagent storms (10+ subagents spawned from vague prompts).
+Uses `CLAUDE_SESSION_ID` to track the exact current session (v2) — no cross-session confusion.
 
-**3. Cross-session context persistence**
-The `/save-context` command saves your session state (decisions, files changed, next steps) to the project's `CLAUDE.md`. When you start a fresh session, Claude reads it and picks up where you left off.
+### 2. Anti-pattern detection
+Warns about subagent storms (8+ subagents spawned from vague prompts).
 
-**4. Global behavioral rules**
-Injects rules into Claude's global instructions to:
-- Push back on vague "build everything" prompts
-- Suggest file references over pasting large specs
-- Limit subagent spawning
-- Proactively offer context saving
+### 3. Cross-session context persistence
+`/save-context` saves your session state (decisions, files changed, next steps) to the project's `CLAUDE.md`. Fresh sessions read it and pick up where you left off.
+
+### 4. Global behavioral rules
+Injects rules into Claude's global instructions to push back on wasteful patterns: vague "build everything" prompts, spec pasting, build output dumping.
 
 ## Install
 
-### One-liner
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rajkaria/claude-session-guard/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/install.sh | bash
 ```
 
-### Manual
+Or clone and install locally:
 
 ```bash
-git clone https://github.com/rajkaria/claude-session-guard.git
-cd claude-session-guard
+git clone https://github.com/rajkaria/burn-rate.git
+cd burn-rate
 bash install.sh
 ```
 
@@ -58,51 +52,53 @@ bash install.sh
 Override thresholds with environment variables:
 
 ```bash
-export SG_WARN_AT=15     # Gentle nudge (default: 15)
-export SG_STRONG_AT=25   # Strong warning (default: 25)
-export SG_URGENT_AT=40   # Urgent stop (default: 40)
+export BURN_RATE_WARN=15     # Gentle nudge (default: 15)
+export BURN_RATE_STRONG=25   # Strong warning (default: 25)
+export BURN_RATE_URGENT=40   # Urgent stop (default: 40)
 ```
 
 ## Usage
 
 ### During a session
+Burn Rate runs automatically. You'll see nudges at 15, 25, and 40 prompts with cost estimates.
 
-Session Guard runs automatically. You'll see nudges at 15, 25, and 40 prompts.
-
-### Saving context before ending
-
+### Saving context
 ```
 /save-context
 ```
+Writes a structured summary to your project's `CLAUDE.md` — current state, files changed, next steps, key decisions.
 
-This writes a structured summary to your project's `CLAUDE.md`:
-- Current state (what works, what's broken)
-- Files changed and why
-- Next steps for the next session
-- Key decisions made
+### Starting fresh
+Start Claude Code in the same project. It reads the `CLAUDE.md` and has full context from the last session.
 
-### Starting a new session
+## The Five Anti-Patterns
 
-Just start Claude Code in the same project. It reads the `CLAUDE.md` and has full context from the last session.
-
-## The Five Anti-Patterns It Prevents
-
-| Anti-Pattern | Impact | How Session Guard Helps |
-|-------------|--------|----------------------|
-| Monster sessions (50+ prompts) | $50-250+ per session | Warns at 15/25/40 prompts |
-| Spec pasting (large docs in chat) | Stays in context forever | Rules tell Claude to suggest file references |
-| Subagent storms (20+ agents) | Each loads full context | Warns at 8/15 subagents, rules limit spawning |
-| File re-reads (same file 20+ times) | Wasted tokens | Short sessions prevent compaction-driven re-reads |
-| Build output dumping | 5K-60K chars per paste | Rules tell Claude to ask for relevant lines only |
+| Anti-Pattern | Impact | How Burn Rate Helps |
+|-------------|--------|-------------------|
+| **Monster sessions** (50+ prompts) | $50-250+ per session | Warns at 15/25/40 prompts with cost estimate |
+| **Spec pasting** (large docs in chat) | Stays in context forever | Rules tell Claude to suggest file references |
+| **Subagent storms** (20+ agents) | Each loads full context | Warns at 8/15 subagents |
+| **File re-reads** (same file 20+ times) | Wasted tokens | Short sessions prevent compaction-driven re-reads |
+| **Build output dumping** | 5K-60K chars per paste | Rules tell Claude to ask for relevant lines only |
 
 ## What Gets Installed
 
 | File | Purpose |
 |------|---------|
-| `~/.claude/scripts/session-guard.sh` | Hook script (prompt counter + cost estimator) |
+| `~/.claude/scripts/burn-rate.sh` | Hook script (prompt counter + cost estimator + subagent detector) |
 | `~/.claude/commands/save-context.md` | `/save-context` slash command |
 | `~/.claude/CLAUDE.md` | Global rules (appended if file exists) |
 | `~/.claude/settings.json` | Hook registration (merged safely) |
+
+## How It Works
+
+The hook script:
+1. Uses `CLAUDE_SESSION_ID` env var to find the exact current session's JSONL file
+2. Falls back to most-recently-modified JSONL for older Claude Code versions
+3. Counts `"type":"user"` lines for prompt count
+4. Counts subagent JSONL files in the session directory
+5. Estimates cost using an empirical model based on real session data
+6. Outputs warnings to stdout which Claude Code displays as hook feedback
 
 ## Compatibility
 
@@ -114,14 +110,10 @@ Just start Claude Code in the same project. It reads the `CLAUDE.md` and has ful
 ## Uninstall
 
 ```bash
-# Remove the hook script
-rm ~/.claude/scripts/session-guard.sh
-
-# Remove the command
+rm ~/.claude/scripts/burn-rate.sh
 rm ~/.claude/commands/save-context.md
-
-# Remove the hook from settings.json (manual edit)
-# Remove Session Guard rules from ~/.claude/CLAUDE.md (manual edit)
+# Manually remove Burn Rate rules from ~/.claude/CLAUDE.md
+# Manually remove the hook from ~/.claude/settings.json
 ```
 
 ## License

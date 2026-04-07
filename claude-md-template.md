@@ -1,4 +1,4 @@
-# Global Rules (Session Guard)
+# Global Rules (Burn Rate)
 
 ## Session Length Management
 - Track conversation depth. After ~15 user messages, remind the user to consider wrapping up and starting a fresh session.
