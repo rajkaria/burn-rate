@@ -43,46 +43,89 @@ fi
 # --- Count user messages ---
 USER_MSG_COUNT=$(grep -c '"type":"user"' "$SESSION_FILE" 2>/dev/null || echo "0")
 
-# --- Read actual token usage from session JSONL ---
-# Extract token counts from assistant message usage fields
-# This gives us real numbers, not estimates
-TOKEN_DATA=$(python3 -c "
-import json, sys
+# --- Read actual token usage + compute cost from session JSONL ---
+# Uses pricing.json (from plugin dir or ~/.claude/scripts/) for accurate rates.
+# Falls back to hardcoded defaults if pricing file not found.
+PRICING_FILE=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+for candidate in \
+  "${CLAUDE_PLUGIN_ROOT:-}/pricing.json" \
+  "$SCRIPT_DIR/../pricing.json" \
+  "$HOME/.claude/scripts/pricing.json"; do
+  if [ -f "$candidate" ]; then
+    PRICING_FILE="$candidate"
+    break
+  fi
+done
+
+TOKEN_DATA=$(python3 << PYEOF
+import json, sys, os
+
+# --- Read pricing ---
+pricing = {
+    # Defaults: Opus 4.6 / Sonnet 4.6 / Haiku 4.5 (April 2026)
+    # Source: https://platform.claude.com/docs/en/about-claude/pricing
+    "opus":   {"input": 5.0, "cache_write": 6.25, "cache_read": 0.50, "output": 25.0},
+    "sonnet": {"input": 3.0, "cache_write": 3.75, "cache_read": 0.30, "output": 15.0},
+    "haiku":  {"input": 1.0, "cache_write": 1.25, "cache_read": 0.10, "output": 5.0},
+}
+pricing_file = "$PRICING_FILE"
+if pricing_file and os.path.isfile(pricing_file):
+    try:
+        with open(pricing_file) as f:
+            loaded = json.load(f)
+        for model_key in ["opus", "sonnet", "haiku"]:
+            if model_key in loaded:
+                pricing[model_key].update(loaded[model_key])
+    except:
+        pass
+
+# --- Read session tokens ---
 total_input = 0
 total_cache_create = 0
 total_cache_read = 0
 total_output = 0
-model = 'opus'
+model = "opus"
 try:
-    with open('$SESSION_FILE') as f:
+    with open("$SESSION_FILE") as f:
         for line in f:
             try:
                 obj = json.loads(line)
             except:
                 continue
-            if obj.get('type') == 'assistant':
-                u = obj.get('message', {}).get('usage', {})
-                total_input += u.get('input_tokens', 0)
-                total_cache_create += u.get('cache_creation_input_tokens', 0)
-                total_cache_read += u.get('cache_read_input_tokens', 0)
-                total_output += u.get('output_tokens', 0)
-                m = obj.get('message', {}).get('model', '')
-                if 'haiku' in m.lower():
-                    model = 'haiku'
-                elif 'sonnet' in m.lower():
-                    model = 'sonnet'
+            if obj.get("type") == "assistant":
+                u = obj.get("message", {}).get("usage", {})
+                total_input += u.get("input_tokens", 0)
+                total_cache_create += u.get("cache_creation_input_tokens", 0)
+                total_cache_read += u.get("cache_read_input_tokens", 0)
+                total_output += u.get("output_tokens", 0)
+                m = obj.get("message", {}).get("model", "")
+                if "haiku" in m.lower():
+                    model = "haiku"
+                elif "sonnet" in m.lower():
+                    model = "sonnet"
 except:
     pass
+
 total = total_input + total_cache_create + total_cache_read + total_output
-print(f'{total} {total_input} {total_cache_create} {total_cache_read} {total_output} {model}')
-" 2>/dev/null || echo "0 0 0 0 0 opus")
+
+# --- Compute cost in cents ---
+p = pricing.get(model, pricing["opus"])
+cost_dollars = (
+    total_input * p["input"]
+    + total_cache_create * p["cache_write"]
+    + total_cache_read * p["cache_read"]
+    + total_output * p["output"]
+) / 1_000_000
+cost_cents = int(cost_dollars * 100)
+
+print(f"{total} {cost_cents} {model}")
+PYEOF
+)
 
 TOTAL_TOKENS=$(echo "$TOKEN_DATA" | awk '{print $1}')
-INPUT_TOKENS=$(echo "$TOKEN_DATA" | awk '{print $2}')
-CACHE_CREATE=$(echo "$TOKEN_DATA" | awk '{print $3}')
-CACHE_READ=$(echo "$TOKEN_DATA" | awk '{print $4}')
-OUTPUT_TOKENS=$(echo "$TOKEN_DATA" | awk '{print $5}')
-MODEL=$(echo "$TOKEN_DATA" | awk '{print $6}')
+COST_CENTS=$(echo "$TOKEN_DATA" | awk '{print $2}')
+MODEL=$(echo "$TOKEN_DATA" | awk '{print $3}')
 
 # --- Format token count for display ---
 format_tokens() {
@@ -108,31 +151,7 @@ if [ -d "$SESSION_DIR/subagents" ]; then
   SUBAGENT_COUNT=$(find "$SESSION_DIR/subagents" -name "*.jsonl" -type f 2>/dev/null | wc -l | tr -d ' ')
 fi
 
-# --- Estimate cost from actual tokens ---
-# Pricing per 1M tokens (in hundredths of a cent for integer math):
-#   Opus:   input=$15, cache_create=$18.75, cache_read=$1.88, output=$75
-#   Sonnet: input=$3,  cache_create=$3.75,  cache_read=$0.30, output=$15
-#   Haiku:  input=$0.80, cache_create=$1.00, cache_read=$0.08, output=$4
-# We compute in microdollars (1M microdollars = $1) then convert to cents
-estimate_cost_from_tokens() {
-  local cost_micros=0
-  case "$MODEL" in
-    opus)
-      cost_micros=$(( INPUT_TOKENS * 15 + CACHE_CREATE * 19 + CACHE_READ * 2 + OUTPUT_TOKENS * 75 ))
-      ;;
-    sonnet)
-      cost_micros=$(( INPUT_TOKENS * 3 + CACHE_CREATE * 4 + CACHE_READ * 1 + OUTPUT_TOKENS * 15 ))
-      ;;
-    haiku)
-      cost_micros=$(( INPUT_TOKENS * 1 + CACHE_CREATE * 1 + CACHE_READ * 1 + OUTPUT_TOKENS * 4 ))
-      ;;
-  esac
-  # Convert from microdollars-per-million to cents: divide by 1M, multiply by 100
-  # Simplified: divide by 10000
-  echo $(( cost_micros / 10000 ))
-}
-
-COST_CENTS=$(estimate_cost_from_tokens)
+# --- Format cost ---
 COST_DOLLARS=$((COST_CENTS / 100))
 COST_REMAINDER=$((COST_CENTS % 100))
 COST_FMT="\$${COST_DOLLARS}.$(printf '%02d' $COST_REMAINDER)"

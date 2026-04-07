@@ -1,0 +1,22 @@
+{
+  "_comment": "Pricing per million tokens in USD. Source: https://platform.claude.com/docs/en/about-claude/pricing",
+  "_updated": "2026-04-07",
+  "opus": {
+    "input": 5.00,
+    "cache_write": 6.25,
+    "cache_read": 0.50,
+    "output": 25.00
+  },
+  "sonnet": {
+    "input": 3.00,
+    "cache_write": 3.75,
+    "cache_read": 0.30,
+    "output": 15.00
+  },
+  "haiku": {
+    "input": 1.00,
+    "cache_write": 1.25,
+    "cache_read": 0.10,
+    "output": 5.00
+  }
+}
