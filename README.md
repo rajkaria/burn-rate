@@ -51,18 +51,17 @@ Run /save-context and start a new session NOW.
 
 ## Install (30 seconds)
 
+Pick one:
+
+### Option A: Script Install (fastest)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/install.sh | bash
 ```
 
-That's it. Next session, you'll see your burn rate.
+### Option B: Claude Code Plugin
 
-<details>
-<summary>Other install methods</summary>
-
-### As a Claude Code Plugin
-
-Add to `~/.claude/settings.json`:
+Add to your `~/.claude/settings.json`:
 
 ```json
 {
@@ -79,35 +78,97 @@ Add to `~/.claude/settings.json`:
 
 Then: `claude plugins enable burn-rate`
 
-### From Source
+### Option C: From Source
 
 ```bash
 git clone https://github.com/rajkaria/burn-rate.git && cd burn-rate && bash install.sh
 ```
 
-</details>
+That's it. Start a new Claude Code session and you'll see your burn rate.
 
-## What changes after you install
+## How to use it
 
-**Before:** You send 80 messages, Claude gets slow, you wonder why your bill is high.
+### It warns you automatically — you don't do anything
 
-**After:**
+Just code like normal. Burn Rate watches in the background and speaks up when it matters:
 
 ```
-You: "Set up the database schema"
-  ... 14 messages of productive work ...
+You: "Add user authentication to the app"
+You: "Use JWT, add refresh tokens"
+You: "Add the login page"
+  ... working away ...
 
-BURN RATE [15 prompts | ~$7.50]: Consider wrapping up soon.
+┌─────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [15 prompts | ~$7.50]: Consider wrapping up soon.        │
+│ Run /save-context before starting a new session.                   │
+└─────────────────────────────────────────────────────────────────────┘
 
+You: (keeps going anyway)
+You: "Add the signup page too"
+  ... 10 more messages ...
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [25 prompts | ~$18.50]: Session getting costly.          │
+│ Run /save-context and start fresh.                                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+That's your cue.
+
+### `/save-context` — save your progress in 5 seconds
+
+When you see the warning (or when you're done with a task), type:
+
+```
 You: /save-context
-Claude: ✓ Saved to CLAUDE.md — schema done, next: API routes
+```
 
-You: [start new session]
-You: "Build the API routes. Context is in CLAUDE.md"
-Claude: [reads CLAUDE.md, picks up exactly where you left off]
-  ... 12 messages ...
+Claude writes a structured summary to your project's `CLAUDE.md`:
 
-Done. Two sessions. $15 total instead of $80.
+```markdown
+## Session Context (Last updated: 2026-04-07 14:30)
+
+### Current State
+- Auth system working: JWT + refresh tokens implemented
+- Login page done, signup page in progress
+- Database: users table with email/password/refresh_token columns
+
+### Recent Changes
+- Created src/auth/jwt.ts — token generation and validation
+- Created src/pages/login.tsx — login form with error handling
+- Modified src/db/schema.ts — added users table
+
+### Next Steps
+- Finish signup page (form validation pending)
+- Add password reset flow
+- Write auth middleware for protected routes
+
+### Key Decisions
+- JWT over sessions: stateless, works with mobile app later
+- Refresh tokens stored in DB, not cookies
+```
+
+### Start a fresh session — zero context loss
+
+```
+You: [start new Claude Code session in the same project]
+You: "Continue where I left off. Check CLAUDE.md for context."
+
+Claude: [reads CLAUDE.md]
+"I see auth is done and you need to finish the signup page.
+ Let me pick up from the form validation..."
+```
+
+**Two sessions. $15 total. Instead of one monster session for $80.**
+
+### `/burn-rate` — check your stats anytime
+
+Don't want to wait for a warning? Just ask:
+
+```
+You: /burn-rate
+Claude: "Current session: 8 prompts, ~$3.20 estimated cost,
+         2 subagents spawned. You're in the safe zone."
 ```
 
 ## The habits that are costing you money
