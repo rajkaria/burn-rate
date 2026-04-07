@@ -11,10 +11,10 @@ echo "burn-rate.sh not found"
 ```
 
 Report the results to the user:
-- **Prompt count** — how many user messages in this session
+- **Prompt count** — how many actual human messages in this session (tool results are excluded)
 - **Token count** — total tokens consumed (input + cache + output)
-- **Estimated cost** — based on the detected model and current pricing
 - **Subagent count** — how many subagents were spawned
+- **Estimated cost** — only shown if user has set `BURN_RATE_SHOW_COST=1` (API/pay-per-token users)
 
 If no output (session is below all thresholds), tell the user their current session is still in the safe zone (<15 prompts) and show the token count so far.
 

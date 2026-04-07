@@ -27,13 +27,13 @@ echo "  Burn Rate Uninstaller"
 echo "  ====================="
 echo ""
 
-# --- Remove scripts ---
-if [ -f "$SCRIPTS_DIR/burn-rate.sh" ]; then
-  rm "$SCRIPTS_DIR/burn-rate.sh"
-  info "Removed burn-rate.sh"
-else
-  warn "burn-rate.sh not found (already removed?)"
-fi
+# --- Remove scripts and config ---
+for file in burn-rate.sh pricing.json; do
+  if [ -f "$SCRIPTS_DIR/$file" ]; then
+    rm "$SCRIPTS_DIR/$file"
+    info "Removed $file"
+  fi
+done
 
 # --- Remove commands ---
 for cmd in save-context.md burn-rate.md; do

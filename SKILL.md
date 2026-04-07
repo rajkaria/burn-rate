@@ -75,10 +75,10 @@ Pasting raw terminal output (npm errors, build logs, stack traces) of 5,000-60,0
 
 A `UserPromptSubmit` hook that fires on every prompt:
 
-- Uses `CLAUDE_SESSION_ID` to find the exact current session (v2 — no more cross-session confusion)
-- Falls back to most-recently-modified JSONL for older Claude Code versions
-- Counts user messages and subagent sessions
-- Estimates cost based on empirical token growth curves
+- Uses `CLAUDE_SESSION_ID` to find the exact current session (falls back to most-recent JSONL)
+- Counts actual human prompts (excludes tool results which inflate counts 10x)
+- Reads real token usage from session JSONL (input, cache write, cache read, output)
+- Shows tokens by default; dollar estimates opt-in via `BURN_RATE_SHOW_COST=1`
 - Returns warnings at configurable thresholds
 
 ### Thresholds (configurable via env vars)
@@ -123,20 +123,19 @@ Then enable: `claude plugins enable burn-rate`
 curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/install.sh | bash
 ```
 
-## Cost Estimation Model
+## Token Growth Reference
 
-Based on Opus 4.6 pricing ($5/MTok input, $6.25/MTok cache write, $0.50/MTok cache read, $25/MTok output).
-Reads actual token counts from session JSONL and uses `pricing.json` for rates (user-updatable when prices change).
+Typical token accumulation per session (varies by project size and tool usage):
 
-| Prompts | Estimated Cost | Action |
+| Prompts | Typical Tokens | Action |
 |---------|---------------|--------|
-| 1-10 | $0.20 - $1 | Normal |
-| 10-15 | $1 - $3 | Plan to wrap up |
-| 15-25 | $3 - $8 | Save context, start fresh |
-| 25-40 | $8 - $20 | Urgently end session |
-| 40-100 | $20 - $80+ | Burning money |
+| 1-10 | 0.5 - 5M | Normal |
+| 10-15 | 5 - 10M | Plan to wrap up |
+| 15-25 | 10 - 30M | Save context, start fresh |
+| 25-40 | 30 - 80M | Urgently end session |
+| 40+ | 80M+ | Burning tokens fast |
 
-Subagents add ~$0.30-0.50 each on average to the session cost.
+Dollar cost estimates available for API/pay-per-token users via `BURN_RATE_SHOW_COST=1`. Uses `pricing.json` for rates (user-updatable when Anthropic changes pricing).
 
 ## Compatibility
 

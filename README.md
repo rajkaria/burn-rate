@@ -6,7 +6,7 @@ I analyzed my usage and found this:
 
 ```
 Session 1:  "build everything from the spec"      →  567M tokens
-Session 2:   1,703 messages in one sitting          →  294M tokens
+Session 2:   all-day session, no breaks               →  294M tokens
 Session 3:  "strategize and start the build"       →  297M tokens
 ──────────────────────────────────────────────────────────────────
 Top 5 sessions                                      →  1.3 BILLION tokens
@@ -191,7 +191,7 @@ That error log you just pasted? 60,000 characters. It's now part of every messag
 
 ### The all-day session
 
-184 messages. You and Claude going back and forth for 8 hours. By message 100, Claude is re-reading 200M+ tokens of context every time you say "ok" or "yes do that."
+An all-day session without breaks. You and Claude going back and forth for hours. The context window fills up, compaction kicks in, and Claude re-reads 200M+ tokens of context every time you say "ok" or "yes do that."
 
 **Instead:** `/save-context` every 15-20 messages. Start fresh. It's free and takes 5 seconds.
 
