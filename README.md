@@ -13,6 +13,8 @@ Every message in a Claude Code session re-sends the **entire conversation histor
 | 50 prompts | $50-100 | Wasteful |
 | 100+ prompts | $100-250+ | Burning money |
 
+*Costs shown for Opus. Sonnet is ~5x cheaper, Haiku ~20x cheaper. Burn Rate auto-detects your model.*
+
 ## What It Does
 
 ### 1. Real-time burn rate monitor
@@ -24,13 +26,16 @@ Run /save-context and start fresh.
 
 Uses `CLAUDE_SESSION_ID` to track the exact current session (v2) — no cross-session confusion.
 
-### 2. Anti-pattern detection
+### 2. On-demand stats
+Type `/burn-rate` anytime to check your current session's prompt count, cost estimate, and subagent count.
+
+### 3. Anti-pattern detection
 Warns about subagent storms (8+ subagents spawned from vague prompts).
 
-### 3. Cross-session context persistence
+### 4. Cross-session context persistence
 `/save-context` saves your session state (decisions, files changed, next steps) to the project's `CLAUDE.md`. Fresh sessions read it and pick up where you left off.
 
-### 4. Global behavioral rules
+### 5. Global behavioral rules
 Injects rules into Claude's global instructions to push back on wasteful patterns: vague "build everything" prompts, spec pasting, build output dumping.
 
 ## Install
@@ -86,6 +91,7 @@ Start Claude Code in the same project. It reads the `CLAUDE.md` and has full con
 | File | Purpose |
 |------|---------|
 | `~/.claude/scripts/burn-rate.sh` | Hook script (prompt counter + cost estimator + subagent detector) |
+| `~/.claude/commands/burn-rate.md` | `/burn-rate` on-demand stats command |
 | `~/.claude/commands/save-context.md` | `/save-context` slash command |
 | `~/.claude/CLAUDE.md` | Global rules (appended if file exists) |
 | `~/.claude/settings.json` | Hook registration (merged safely) |
@@ -110,11 +116,23 @@ The hook script:
 ## Uninstall
 
 ```bash
-rm ~/.claude/scripts/burn-rate.sh
-rm ~/.claude/commands/save-context.md
-# Manually remove Burn Rate rules from ~/.claude/CLAUDE.md
-# Manually remove the hook from ~/.claude/settings.json
+curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/uninstall.sh | bash
 ```
+
+Or if you cloned the repo:
+
+```bash
+bash uninstall.sh
+```
+
+## Contributing
+
+PRs welcome. Areas that would help:
+
+- **Better cost models** — if you have real token data from Sonnet/Haiku sessions, help calibrate the estimates
+- **More anti-patterns** — what other wasteful patterns have you seen?
+- **Platform testing** — test on Linux, different shell environments
+- **IDE integration** — VS Code / JetBrains extension hook support
 
 ## License
 

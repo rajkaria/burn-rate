@@ -6,7 +6,8 @@
 # https://github.com/rajkaria/burn-rate
 # ============================================================================
 
-set -euo pipefail
+# Don't use set -e: grep -c returns exit 1 on zero matches
+set -uo pipefail
 
 # --- Configurable thresholds (override via env vars) ---
 WARN_AT="${BURN_RATE_WARN:-15}"
@@ -42,8 +43,15 @@ fi
 # --- Count user messages ---
 USER_MSG_COUNT=$(grep -c '"type":"user"' "$SESSION_FILE" 2>/dev/null || echo "0")
 
-# --- Count assistant messages (for cost estimation) ---
-ASSISTANT_MSG_COUNT=$(grep -c '"type":"assistant"' "$SESSION_FILE" 2>/dev/null || echo "0")
+# --- Detect model (for cost estimation accuracy) ---
+# Check first assistant message for model info; default to opus
+MODEL="opus"
+MODEL_LINE=$(grep -m1 '"model"' "$SESSION_FILE" 2>/dev/null || true)
+if echo "$MODEL_LINE" | grep -qi "haiku" 2>/dev/null; then
+  MODEL="haiku"
+elif echo "$MODEL_LINE" | grep -qi "sonnet" 2>/dev/null; then
+  MODEL="sonnet"
+fi
 
 # --- Count subagents ---
 SESSION_STEM=$(basename "$SESSION_FILE" .jsonl)
@@ -54,19 +62,18 @@ if [ -d "$SESSION_DIR/subagents" ]; then
 fi
 
 # --- Estimate cost ---
-# Based on real-world Opus 4.6 data: context grows ~linearly, cost per turn
-# grows with it. Cache reads dominate (~96% of input tokens).
-# Empirical model from analyzing 27 real sessions:
-#   Turns 1-10:  ~$0.30/turn (small context)
-#   Turns 10-20: ~$0.80/turn (growing context)
-#   Turns 20-35: ~$1.50/turn (large context)
-#   Turns 35+:   ~$2.50/turn (massive context, compaction likely)
-# Subagents add ~$0.50-2.00 each on average
+# Empirical model from analyzing 27 real sessions.
+# Context grows per-turn; cache reads dominate (~96% of input).
+# Cost multipliers by model (relative to Opus):
+#   Opus:   1.0x  ($15/1M input, $75/1M output)
+#   Sonnet: 0.2x  ($3/1M input, $15/1M output)
+#   Haiku:  0.05x ($0.80/1M input, $4/1M output)
 estimate_cost() {
   local prompts=$1
   local subs=$2
   local base_cost=0
 
+  # Base cost in cents (calibrated for Opus 4.6)
   if [ "$prompts" -le 10 ]; then
     base_cost=$((prompts * 30))
   elif [ "$prompts" -le 20 ]; then
@@ -77,9 +84,17 @@ estimate_cost() {
     base_cost=$(( 3350 + (prompts - 35) * 250 ))
   fi
 
-  # Add subagent cost (~$1.00 avg per subagent)
+  # Add subagent cost (~$1.00 avg per subagent for Opus)
   local sub_cost=$((subs * 100))
-  echo $(( base_cost + sub_cost ))
+  local total=$(( base_cost + sub_cost ))
+
+  # Apply model multiplier
+  case "$MODEL" in
+    haiku)  total=$(( total * 5 / 100 )) ;;  # 5% of Opus cost
+    sonnet) total=$(( total * 20 / 100 )) ;;  # 20% of Opus cost
+  esac
+
+  echo "$total"
 }
 
 COST_CENTS=$(estimate_cost "$USER_MSG_COUNT" "$SUBAGENT_COUNT")
@@ -87,16 +102,22 @@ COST_DOLLARS=$((COST_CENTS / 100))
 COST_REMAINDER=$((COST_CENTS % 100))
 COST_FMT="\$${COST_DOLLARS}.$(printf '%02d' $COST_REMAINDER)"
 
+# Model label for display
+MODEL_LABEL=""
+if [ "$MODEL" != "opus" ]; then
+  MODEL_LABEL=" (${MODEL})"
+fi
+
 # --- Build output ---
 PARTS=()
 
 # Prompt count warnings
 if [ "$USER_MSG_COUNT" -ge "$URGENT_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}]: Session is VERY expensive — each message re-sends ~${USER_MSG_COUNT}x context. Run /save-context and start a new session NOW.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}${MODEL_LABEL}]: Session is VERY expensive — each message re-sends ~${USER_MSG_COUNT}x context. Run /save-context and start a new session NOW.")
 elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}]: Session getting costly. Run /save-context and start fresh.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}${MODEL_LABEL}]: Session getting costly. Run /save-context and start fresh.")
 elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}]: Consider wrapping up soon. Run /save-context before starting a new session.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ~${COST_FMT}${MODEL_LABEL}]: Consider wrapping up soon. Run /save-context before starting a new session.")
 fi
 
 # Subagent storm warnings

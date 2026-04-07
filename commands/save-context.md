@@ -30,4 +30,6 @@ Do the following:
 - (older context, kept for reference but can be trimmed)
 ```
 
-3. **Confirm** — tell the user the context has been saved and they can safely start a new session. Mention the file path where context was saved.
+3. **Safety check** — NEVER write API keys, tokens, passwords, or secrets into the CLAUDE.md. If the session involved credentials, reference them generically (e.g., "configured Supabase connection" not the actual key).
+
+4. **Confirm** — tell the user the context has been saved and they can safely start a new session. Mention the file path where context was saved.
