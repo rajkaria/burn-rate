@@ -1,53 +1,55 @@
-# Your Claude Code sessions cost 5x more than they should.
+# Your Claude Code sessions burn 5x more tokens than they should.
 
 You just don't know it yet.
 
 I analyzed my usage and found this:
 
 ```
-Session 1:  "build everything from the spec"      →  $375  (567M tokens)
-Session 2:   1,703 messages in one sitting          →  $222  (294M tokens)
-Session 3:  "strategize and start the build"       →  $185  (297M tokens)
-──────────────────────────────────────────────────────────────────────────
-Top 5 sessions                                      →  $1,043
+Session 1:  "build everything from the spec"      →  567M tokens
+Session 2:   1,703 messages in one sitting          →  294M tokens
+Session 3:  "strategize and start the build"       →  297M tokens
+──────────────────────────────────────────────────────────────────
+Top 5 sessions                                      →  1.3 BILLION tokens
 ```
 
-The same work, split into short focused sessions: **~$200.**
+The same work, split into short focused sessions: **~200M tokens.**
 
-That's **$800+ wasted** because nobody told me to stop.
+That's **1.1 billion tokens wasted** because nobody told me to stop.
 
 ## The thing Anthropic doesn't show you
 
-Every message re-sends your **entire conversation**. The cost per message grows with every turn:
+Every message re-sends your **entire conversation**. The context size grows with every turn:
 
 ```
-Message 1  ░                          $0.10
-Message 10 ░░░░                       $0.25
-Message 25 ░░░░░░░░░░                 $0.50
-Message 50 ░░░░░░░░░░░░░░░░░         $0.80
-Message 100░░░░░░░░░░░░░░░░░░░░░░░░  $1.00+
+Message 1  ░                          ~50K tokens
+Message 10 ░░░░                       ~2M tokens
+Message 25 ░░░░░░░░░░                 ~10M tokens
+Message 50 ░░░░░░░░░░░░░░░░░         ~40M tokens
+Message 100░░░░░░░░░░░░░░░░░░░░░░░░  ~100M+ tokens
 ```
 
 By message 50, you've spent more on re-reading old context than on actual work.
 
-There's no cost counter. No warning. Nothing. You're flying blind.
+There's no token counter. No warning. Nothing. You're flying blind.
 
 **Burn Rate is the missing fuel gauge.**
 
 ```
-BURN RATE [15 prompts | 8.2M tokens | ~$2.50]: Consider wrapping up soon.
+BURN RATE [15 prompts | 8.2M tokens]: Consider wrapping up soon.
 Run /save-context before starting a new session.
 ```
 
 ```
-BURN RATE [25 prompts | 22.5M tokens | ~$6.80]: Session getting costly.
+BURN RATE [25 prompts | 22.5M tokens]: Session getting heavy.
 Run /save-context and start fresh.
 ```
 
 ```
-BURN RATE [40 prompts | 58.3M tokens | ~$18.40]: Session is VERY expensive.
+BURN RATE [40 prompts | 58.3M tokens]: Session is VERY large.
 Each message re-sends the full 58.3M context. Run /save-context and start a new session NOW.
 ```
+
+> **Note on pricing:** Burn Rate focuses on tokens because that's the universal metric — whether you're on Max ($100/mo), Pro ($20/mo), or pay-per-token API. On flat-rate plans, long sessions eat your rate limit quota faster. On API plans, you can optionally show dollar estimates with `BURN_RATE_SHOW_COST=1`.
 
 ## Install (30 seconds)
 
@@ -98,19 +100,19 @@ You: "Use JWT, add refresh tokens"
 You: "Add the login page"
   ... working away ...
 
-┌──────────────────────────────────────────────────────────────────────────┐
-│ BURN RATE [15 prompts | 8.2M tokens | ~$2.50]: Consider wrapping up    │
-│ soon. Run /save-context before starting a new session.                  │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [15 prompts | 8.2M tokens]: Consider wrapping up soon.       │
+│ Run /save-context before starting a new session.                       │
+└─────────────────────────────────────────────────────────────────────────┘
 
 You: (keeps going anyway)
 You: "Add the signup page too"
   ... 10 more messages ...
 
-┌──────────────────────────────────────────────────────────────────────────┐
-│ BURN RATE [25 prompts | 22.5M tokens | ~$6.80]: Session getting costly. │
-│ Run /save-context and start fresh.                                      │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [25 prompts | 22.5M tokens]: Session getting heavy.          │
+│ Run /save-context and start fresh.                                     │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 That's your cue.
@@ -159,7 +161,7 @@ Claude: [reads CLAUDE.md]
  Let me pick up from the form validation..."
 ```
 
-**Two sessions. ~$5 total. Instead of one monster session for $30+.**
+**Two sessions. ~2M tokens total. Instead of one monster session burning 40M+.**
 
 ### `/burn-rate` — check your stats anytime
 
@@ -167,23 +169,23 @@ Don't want to wait for a warning? Just ask:
 
 ```
 You: /burn-rate
-Claude: "Current session: 8 prompts, 3.1M tokens, ~$1.20 estimated cost,
+Claude: "Current session: 8 prompts, 3.1M tokens,
          2 subagents spawned. You're in the safe zone."
 ```
 
-## The habits that are costing you money
+## The habits that are burning your tokens
 
 ### "Build everything from the spec"
 
 You paste a 20K character spec and say "implement this."
 
-Claude spawns 60 parallel agents. Each one loads your entire project context. Your one prompt just cost $20+ in subagent overhead alone.
+Claude spawns 60 parallel agents. Each one loads your entire project context. Your one prompt just burned 50M+ tokens in subagent overhead alone.
 
 **Instead:** "Implement the auth module from section 3 of `docs/SPEC.md`"
 
 ### Pasting walls of text
 
-That error log you just pasted? 60,000 characters. It's now part of every message for the rest of this session.
+That error log you just pasted? 60,000 characters. It's now part of every message for the rest of this session — re-sent with every turn.
 
 **Instead:** "Build failed with `TypeError: Cannot read 'map' of undefined at UserList.tsx:42`"
 
@@ -203,24 +205,32 @@ Real stat: `roundEngine.ts` was read 42 times in one session. Why? Because after
 
 | You get | What it does |
 |---------|-------------|
-| Automatic warnings | Shows prompt count + estimated cost at 15 / 25 / 40 messages |
-| `/burn-rate` | Check your current burn rate anytime |
+| Automatic warnings | Shows prompt count + token count at 15 / 25 / 40 messages |
+| `/burn-rate` | Check your current session stats anytime |
 | `/save-context` | Save decisions + state + next steps to CLAUDE.md |
 | Smart rules | Claude automatically pushes back on vague prompts and spec pasting |
-| Model detection | Auto-adjusts estimates for Opus / Sonnet / Haiku |
+| Model detection | Auto-detects Opus / Sonnet / Haiku |
 | Subagent alerts | Warns when too many agents are spawned |
+| Optional cost display | Set `BURN_RATE_SHOW_COST=1` for API/pay-per-token users |
 
 Zero config. Works immediately. Adds <50ms per prompt.
 
 ## Configuration
 
-Want different thresholds? Set env vars:
-
 ```bash
-export BURN_RATE_WARN=15     # default: 15
-export BURN_RATE_STRONG=25   # default: 25
-export BURN_RATE_URGENT=40   # default: 40
+export BURN_RATE_WARN=15       # Gentle nudge threshold (default: 15)
+export BURN_RATE_STRONG=25     # Strong warning threshold (default: 25)
+export BURN_RATE_URGENT=40     # Urgent stop threshold (default: 40)
+export BURN_RATE_SHOW_COST=1   # Show $ estimates (for API/pay-per-token users only)
 ```
+
+### Who should enable cost display?
+
+| Plan | Show cost? | Why |
+|------|-----------|-----|
+| **Claude Max** ($100/mo) | No (default) | You pay flat rate. Tokens = rate limit capacity. |
+| **Claude Pro** ($20/mo) | No (default) | Same — focus on tokens as your capacity signal. |
+| **API / pay-per-token** | Yes (`BURN_RATE_SHOW_COST=1`) | You pay per token. $ matters directly. |
 
 ## Works everywhere
 
@@ -234,7 +244,10 @@ Script: `curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/un
 
 ## Contributing
 
-The cost model is calibrated from real Opus session data. If you have Sonnet or Haiku usage data, PRs to improve the estimates are very welcome.
+The token analysis is based on real session data. PRs welcome for:
+- More anti-patterns you've observed
+- Platform testing (Linux, different shells)
+- Better context persistence strategies
 
 ## License
 

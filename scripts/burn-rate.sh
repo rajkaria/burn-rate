@@ -14,6 +14,10 @@ WARN_AT="${BURN_RATE_WARN:-15}"
 STRONG_AT="${BURN_RATE_STRONG:-25}"
 URGENT_AT="${BURN_RATE_URGENT:-40}"
 
+# Show dollar cost estimates? Only relevant for API/pay-per-token users.
+# Set BURN_RATE_SHOW_COST=1 to enable. Off by default (most users are on Max/Pro).
+SHOW_COST="${BURN_RATE_SHOW_COST:-0}"
+
 # --- Locate current session using CLAUDE_SESSION_ID ---
 PROJECTS_DIR="$HOME/.claude/projects"
 
@@ -151,27 +155,24 @@ if [ -d "$SESSION_DIR/subagents" ]; then
   SUBAGENT_COUNT=$(find "$SESSION_DIR/subagents" -name "*.jsonl" -type f 2>/dev/null | wc -l | tr -d ' ')
 fi
 
-# --- Format cost ---
-COST_DOLLARS=$((COST_CENTS / 100))
-COST_REMAINDER=$((COST_CENTS % 100))
-COST_FMT="\$${COST_DOLLARS}.$(printf '%02d' $COST_REMAINDER)"
-
-# Model label for display
-MODEL_LABEL=""
-if [ "$MODEL" != "opus" ]; then
-  MODEL_LABEL=" ${MODEL}"
+# --- Format cost (only used if SHOW_COST=1) ---
+COST_SUFFIX=""
+if [ "$SHOW_COST" = "1" ]; then
+  COST_DOLLARS=$((COST_CENTS / 100))
+  COST_REMAINDER=$((COST_CENTS % 100))
+  COST_SUFFIX=" | ~\$${COST_DOLLARS}.$(printf '%02d' $COST_REMAINDER)"
 fi
 
 # --- Build output ---
 PARTS=()
 
-# Prompt count warnings
+# Prompt count warnings — token-focused, cost only if opted in
 if [ "$USER_MSG_COUNT" -ge "$URGENT_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens | ~${COST_FMT}${MODEL_LABEL}]: Session is VERY expensive — each message re-sends the full ${TOKEN_FMT} context. Run /save-context and start a new session NOW.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Session is VERY large — each message re-sends the full ${TOKEN_FMT} context. Run /save-context and start a new session NOW.")
 elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens | ~${COST_FMT}${MODEL_LABEL}]: Session getting costly. Run /save-context and start fresh.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Session getting heavy. Run /save-context and start fresh.")
 elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens | ~${COST_FMT}${MODEL_LABEL}]: Consider wrapping up soon. Run /save-context before starting a new session.")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Consider wrapping up soon. Run /save-context before starting a new session.")
 fi
 
 # Subagent storm warnings
