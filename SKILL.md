@@ -98,24 +98,12 @@ A `UserPromptSubmit` hook that fires on every prompt:
 
 ## Installation
 
-### As a Claude Code Plugin (Recommended)
+### Claude Code
 
-Add to your `~/.claude/settings.json`:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "burn-rate": {
-      "source": {
-        "source": "github",
-        "repo": "rajkaria/burn-rate"
-      }
-    }
-  }
-}
 ```
-
-Then enable: `claude plugins enable burn-rate`
+/plugin marketplace add rajkaria/burn-rate
+/plugin install burn-rate@burn-rate
+```
 
 ### Script Install
 

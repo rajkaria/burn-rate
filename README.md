@@ -53,40 +53,28 @@ Each message re-sends the full 58.3M context. Run /save-context and start a new 
 
 ## Install (30 seconds)
 
-Pick one:
+### Claude Code
 
-### Option A: Script Install (fastest)
+```
+/plugin marketplace add rajkaria/burn-rate
+/plugin install burn-rate@burn-rate
+```
+
+### Cursor
+
+```
+/add-plugin burn-rate
+```
+
+Or search for "burn-rate" in the plugin marketplace.
+
+### Script Install (works everywhere)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/install.sh | bash
 ```
 
-### Option B: Claude Code Plugin
-
-Add to your `~/.claude/settings.json`:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "burn-rate": {
-      "source": {
-        "source": "github",
-        "repo": "rajkaria/burn-rate"
-      }
-    }
-  }
-}
-```
-
-Then: `claude plugins enable burn-rate`
-
-### Option C: From Source
-
-```bash
-git clone https://github.com/rajkaria/burn-rate.git && cd burn-rate && bash install.sh
-```
-
-That's it. Start a new Claude Code session and you'll see your burn rate.
+That's it. Start a new session and you'll see your burn rate.
 
 ## How to use it
 
@@ -238,7 +226,7 @@ Claude Code CLI, Desktop, Web, VS Code, JetBrains. All models. macOS and Linux. 
 
 ## Uninstall
 
-Plugin: `claude plugins disable burn-rate`
+Plugin: `/plugin uninstall burn-rate@burn-rate`
 
 Script: `curl -fsSL https://raw.githubusercontent.com/rajkaria/burn-rate/main/uninstall.sh | bash`
 

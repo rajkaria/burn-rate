@@ -1,0 +1,34 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "burn-rate",
+  "description": "Real-time session token monitoring, anti-pattern detection, and cross-session context persistence for Claude Code",
+  "owner": {
+    "name": "rajkaria",
+    "email": "raj@rajkaria.com"
+  },
+  "metadata": {
+    "description": "Watch your Claude Code tokens burn in real-time"
+  },
+  "plugins": [
+    {
+      "name": "burn-rate",
+      "source": "./",
+      "description": "Real-time session token monitoring — warns before sessions get heavy, detects subagent storms, and saves context across sessions",
+      "version": "3.1.0",
+      "author": {
+        "name": "rajkaria",
+        "url": "https://github.com/rajkaria"
+      },
+      "homepage": "https://github.com/rajkaria/burn-rate",
+      "repository": "https://github.com/rajkaria/burn-rate",
+      "license": "MIT",
+      "keywords": [
+        "token-optimization",
+        "cost-monitoring",
+        "session-management",
+        "burn-rate",
+        "context-persistence"
+      ]
+    }
+  ]
+}
