@@ -36,17 +36,19 @@ There's no token counter. No warning. Nothing. You're flying blind.
 
 ```
 BURN RATE [15 prompts | 8.2M tokens]: Consider wrapping up soon.
-Run /save-context before starting a new session.
+Run /compact to continue, or /save-context to start fresh.
 ```
 
 ```
 BURN RATE [25 prompts | 22.5M tokens]: Session getting heavy.
 Run /save-context and start fresh.
+  [1.1M/prompt | context: 20.8M reads, 1.2M writes | output: 48.2K]
 ```
 
 ```
 BURN RATE [40 prompts | 58.3M tokens]: Session is VERY large.
 Each message re-sends the full 58.3M context. Run /save-context and start a new session NOW.
+  [1.4M/prompt | context: 55.1M reads, 2.8M writes | output: 112.0K]
 ```
 
 > **Note on pricing:** Burn Rate focuses on tokens because that's the universal metric — whether you're on Max ($100/mo), Pro ($20/mo), or pay-per-token API. On flat-rate plans, long sessions eat your rate limit quota faster. On API plans, you can optionally show dollar estimates with `BURN_RATE_SHOW_COST=1`.
@@ -88,19 +90,20 @@ You: "Use JWT, add refresh tokens"
 You: "Add the login page"
   ... working away ...
 
-┌─────────────────────────────────────────────────────────────────────────┐
-│ BURN RATE [15 prompts | 8.2M tokens]: Consider wrapping up soon.       │
-│ Run /save-context before starting a new session.                       │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [15 prompts | 8.2M tokens]: Consider wrapping up soon.            │
+│ Run /compact to continue, or /save-context to start fresh.                  │
+└──────────────────────────────────────────────────────────────────────────────┘
 
 You: (keeps going anyway)
 You: "Add the signup page too"
   ... 10 more messages ...
 
-┌─────────────────────────────────────────────────────────────────────────┐
-│ BURN RATE [25 prompts | 22.5M tokens]: Session getting heavy.          │
-│ Run /save-context and start fresh.                                     │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ BURN RATE [25 prompts | 22.5M tokens]: Session getting heavy.               │
+│ Run /save-context and start fresh.                                          │
+│   [1.1M/prompt | context: 20.8M reads, 1.2M writes | output: 48.2K]        │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 That's your cue.
@@ -157,7 +160,8 @@ Don't want to wait for a warning? Just ask:
 
 ```
 You: /burn-rate
-Claude: "Current session: 8 prompts, 3.1M tokens,
+Claude: "Current session: 8 prompts, 3.1M tokens (390K/prompt)
+         Breakdown: 2.8M cache reads, 210K cache writes, 42K output
          2 subagents spawned. You're in the safe zone."
 ```
 
@@ -193,11 +197,13 @@ Real stat: one file was read 42 times in a single session. Why? Because after co
 
 | You get | What it does |
 |---------|-------------|
-| Automatic warnings | Shows prompt count + token count at 15 / 25 / 40 messages |
-| `/burn-rate` | Check your current session stats anytime |
-| `/save-context` | Save decisions + state + next steps to CLAUDE.md |
-| Smart rules | Claude automatically pushes back on vague prompts and spec pasting |
-| Model detection | Auto-detects Opus / Sonnet / Haiku |
+| Automatic warnings | Shows prompts + tokens + breakdown at 15 / 25 / 40 messages |
+| Token breakdown | See exactly what's eating tokens: cache reads vs writes vs output |
+| Tokens per prompt | Know your burn velocity — is context growing fast or slow? |
+| `/burn-rate` | Check your full session stats anytime |
+| `/save-context` | Save state to CLAUDE.md + post-session burn report |
+| `/compact` suggestion | At 15-25 prompts, suggests compact as alternative to new session |
+| Smart rules | Claude pushes back on vague prompts and spec pasting |
 | Subagent alerts | Warns when too many agents are spawned |
 | Optional cost display | Set `BURN_RATE_SHOW_COST=1` for API/pay-per-token users |
 

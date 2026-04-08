@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Burn Rate — Claude Code UserPromptSubmit Hook
+# Burn Rate v4 — Claude Code UserPromptSubmit Hook
 # Real-time session token monitoring, anti-pattern detection.
 # Uses CLAUDE_SESSION_ID for accurate current-session tracking.
 # https://github.com/rajkaria/burn-rate
@@ -15,7 +15,6 @@ STRONG_AT="${BURN_RATE_STRONG:-25}"
 URGENT_AT="${BURN_RATE_URGENT:-40}"
 
 # Show dollar cost estimates? Only relevant for API/pay-per-token users.
-# Set BURN_RATE_SHOW_COST=1 to enable. Off by default (most users are on Max/Pro).
 SHOW_COST="${BURN_RATE_SHOW_COST:-0}"
 
 # --- Locate current session using CLAUDE_SESSION_ID ---
@@ -55,8 +54,7 @@ for candidate in \
   fi
 done
 
-# --- Single Python call: count prompts + read tokens + compute cost ---
-# Passes file paths as arguments (not string interpolation) for safety.
+# --- Single Python call: prompts + tokens + breakdown + cost ---
 ANALYSIS=$(python3 - "$SESSION_FILE" "$PRICING_FILE" "$SHOW_COST" << 'PYEOF'
 import json, sys, os
 
@@ -99,7 +97,6 @@ try:
             msg_type = obj.get("type")
 
             if msg_type == "user":
-                # Count only actual human prompts
                 if obj.get("isSidechain", False):
                     continue
                 if obj.get("userType", "") == "tool":
@@ -127,6 +124,9 @@ except Exception:
 
 total_tokens = total_input + total_cache_create + total_cache_read + total_output
 
+# --- Tokens per prompt ---
+tokens_per_prompt = int(total_tokens / human_prompts) if human_prompts > 0 else 0
+
 # --- Compute cost ---
 cost_cents = 0
 if show_cost == "1":
@@ -139,15 +139,20 @@ if show_cost == "1":
     ) / 1_000_000
     cost_cents = int(cost_dollars * 100)
 
-print(f"{human_prompts} {total_tokens} {cost_cents} {model}")
+# Output: prompts total_tokens tokens_per_prompt cache_read cache_create output cost_cents model
+print(f"{human_prompts} {total_tokens} {tokens_per_prompt} {total_cache_read} {total_cache_create} {total_output} {cost_cents} {model}")
 PYEOF
 )
 
 # --- Parse results ---
 USER_MSG_COUNT=$(echo "$ANALYSIS" | awk '{print $1}')
 TOTAL_TOKENS=$(echo "$ANALYSIS" | awk '{print $2}')
-COST_CENTS=$(echo "$ANALYSIS" | awk '{print $3}')
-MODEL=$(echo "$ANALYSIS" | awk '{print $4}')
+TOKENS_PER_PROMPT=$(echo "$ANALYSIS" | awk '{print $3}')
+CACHE_READ=$(echo "$ANALYSIS" | awk '{print $4}')
+CACHE_CREATE=$(echo "$ANALYSIS" | awk '{print $5}')
+OUTPUT_TOKENS=$(echo "$ANALYSIS" | awk '{print $6}')
+COST_CENTS=$(echo "$ANALYSIS" | awk '{print $7}')
+MODEL=$(echo "$ANALYSIS" | awk '{print $8}')
 
 # Handle Python failure
 if [ -z "$USER_MSG_COUNT" ] || [ -z "$TOTAL_TOKENS" ]; then
@@ -169,6 +174,10 @@ format_tokens() {
 }
 
 TOKEN_FMT=$(format_tokens "$TOTAL_TOKENS")
+TPP_FMT=$(format_tokens "$TOKENS_PER_PROMPT")
+CACHE_READ_FMT=$(format_tokens "$CACHE_READ")
+CACHE_CREATE_FMT=$(format_tokens "$CACHE_CREATE")
+OUTPUT_FMT=$(format_tokens "$OUTPUT_TOKENS")
 
 # --- Count subagents ---
 SESSION_STEM=$(basename "$SESSION_FILE" .jsonl)
@@ -189,14 +198,21 @@ fi
 # --- Build output ---
 PARTS=()
 
+# v4: Token breakdown line (always shown when threshold hit)
+BREAKDOWN="[${TPP_FMT}/prompt | context: ${CACHE_READ_FMT} reads, ${CACHE_CREATE_FMT} writes | output: ${OUTPUT_FMT}]"
+
 if [ "$USER_MSG_COUNT" -ge "$URGENT_AT" ]; then
   PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Session is VERY large — each message re-sends the full ${TOKEN_FMT} context. Run /save-context and start a new session NOW.")
+  PARTS+=("  $BREAKDOWN")
 elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ]; then
   PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Session getting heavy. Run /save-context and start fresh.")
+  PARTS+=("  $BREAKDOWN")
 elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Consider wrapping up soon. Run /save-context before starting a new session.")
+  # v4: Between 15-25, suggest /compact as alternative to new session
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Consider wrapping up soon. Run /compact to continue, or /save-context to start fresh.")
 fi
 
+# Subagent warnings
 if [ "$SUBAGENT_COUNT" -ge 15 ]; then
   PARTS+=("SUBAGENT STORM: ${SUBAGENT_COUNT} subagents spawned — each loads full project context independently. Use targeted Grep/Glob instead.")
 elif [ "$SUBAGENT_COUNT" -ge 8 ]; then

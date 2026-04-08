@@ -32,4 +32,15 @@ Do the following:
 
 3. **Safety check** — NEVER write API keys, tokens, passwords, or secrets into the CLAUDE.md. If the session involved credentials, reference them generically (e.g., "configured Supabase connection" not the actual key).
 
-4. **Confirm** — tell the user the context has been saved and they can safely start a new session. Mention the file path where context was saved.
+4. **Post-session burn report** — run the burn rate script and show a summary:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT:-/dev/null}/scripts/burn-rate.sh" 2>/dev/null || bash ~/.claude/scripts/burn-rate.sh 2>/dev/null
+```
+
+Then summarize for the user:
+- Total prompts, total tokens, tokens per prompt
+- Token breakdown (cache reads vs writes vs output)
+- How this compares to an ideal session (15 prompts, <10M tokens)
+
+5. **Confirm** — tell the user the context has been saved and they can safely start a new session. Mention the file path where context was saved.

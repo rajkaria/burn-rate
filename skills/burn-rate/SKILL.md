@@ -6,7 +6,7 @@ description: |
 origin: community
 metadata:
   author: rajkaria
-  version: "3.0.0"
+  version: "4.0.0"
   license: MIT
 ---
 
