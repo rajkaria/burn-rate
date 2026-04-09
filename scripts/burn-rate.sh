@@ -10,6 +10,7 @@
 set -uo pipefail
 
 # --- Configurable thresholds (override via env vars) ---
+COMPACT_AT="${BURN_RATE_COMPACT:-8}"
 WARN_AT="${BURN_RATE_WARN:-15}"
 STRONG_AT="${BURN_RATE_STRONG:-25}"
 URGENT_AT="${BURN_RATE_URGENT:-40}"
@@ -210,6 +211,9 @@ elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ]; then
 elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ]; then
   # v4: Between 15-25, suggest /compact as alternative to new session
   PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Consider wrapping up soon. Run /compact to continue, or /save-context to start fresh.")
+elif [ "$USER_MSG_COUNT" -ge "$COMPACT_AT" ]; then
+  # v5: Early compact nudge — shrink context before it balloons
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens]: Context growing. Run /compact to compress prior conversation and reduce re-sent tokens.")
 fi
 
 # Subagent warnings
