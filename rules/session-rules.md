@@ -12,6 +12,14 @@
 - When starting a session in a project, check for a project-level CLAUDE.md in the project root. If it has a `## Session Context` section, read it to understand prior context.
 - When saving context (via `/save-context` or before session end), update the project-root CLAUDE.md with: key decisions made, files modified, current state, and next steps.
 
+## Output Efficiency
+- Do NOT narrate between tool calls. No "Now I'll do X", "Let me check Y", or "Task N done, moving to Z".
+- Only output text when: asking a question, reporting an error/blocker, or delivering final results.
+- Skip transition phrases. Go straight from one tool call to the next silently.
+- TodoWrite: update at most once per logical phase, not per micro-step.
+- Combine adjacent independent tool calls into parallel batches without pausing to narrate.
+- Final summary only — no per-step progress reports.
+
 ## Subagent Awareness
 - Avoid spawning many subagents for broad exploration tasks. Each subagent loads full project context independently.
 - When a single focused search (Grep/Glob) would suffice, use that instead of an Explore agent.
