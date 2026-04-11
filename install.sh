@@ -67,7 +67,8 @@ fetch_file() {
   local src_path="$1"
   local dest="$2"
   if [ "$SOURCE" = "local" ]; then
-    cp "$SCRIPT_DIR/$src_path" "$dest"
+    # Symlink so repo updates propagate without reinstall
+    ln -sf "$SCRIPT_DIR/$src_path" "$dest"
   else
     curl -fsSL "$REPO_URL/$src_path" -o "$dest"
   fi
@@ -200,15 +201,24 @@ echo ""
 info "Installation complete!"
 echo ""
 echo "  What's installed:"
-echo "    - Hook:     ~/.claude/scripts/burn-rate.sh  (fires on every prompt)"
+if [ "$SOURCE" = "local" ]; then
+  echo "    - Hook:     ~/.claude/scripts/burn-rate.sh  -> repo (symlinked, auto-updates)"
+else
+  echo "    - Hook:     ~/.claude/scripts/burn-rate.sh  (copied, re-run to update)"
+fi
 echo "    - Command:  /save-context                   (save session state)"
 echo "    - Command:  /burn-rate                      (check stats on demand)"
 echo "    - Rules:    ~/.claude/CLAUDE.md              (global session rules)"
 echo ""
 echo "  Configuration (env vars in your shell profile):"
-echo "    BURN_RATE_WARN=15    — gentle nudge threshold"
-echo "    BURN_RATE_STRONG=25  — strong warning threshold"
-echo "    BURN_RATE_URGENT=40  — urgent stop threshold"
+echo "    BURN_RATE_COMPACT=8         — compact nudge (prompt count)"
+echo "    BURN_RATE_WARN=15           — wrap-up nudge (prompt count)"
+echo "    BURN_RATE_STRONG=25         — strong warning (prompt count)"
+echo "    BURN_RATE_URGENT=40         — urgent stop (prompt count)"
+echo "    BURN_RATE_TOKEN_COMPACT=10000000  — compact nudge (token volume)"
+echo "    BURN_RATE_TOKEN_WARN=30000000     — wrap-up nudge (token volume)"
+echo "    BURN_RATE_TOKEN_STRONG=60000000   — strong warning (token volume)"
+echo "    BURN_RATE_TOKEN_URGENT=100000000  — urgent stop (token volume)"
 echo ""
 echo "  Start a new Claude Code session to activate."
 echo ""
