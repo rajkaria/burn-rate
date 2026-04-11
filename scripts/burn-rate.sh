@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Burn Rate v4 — Claude Code UserPromptSubmit Hook
+# Burn Rate v6 — Claude Code UserPromptSubmit Hook
 # Real-time session token monitoring, anti-pattern detection.
 # Uses CLAUDE_SESSION_ID for accurate current-session tracking.
 # https://github.com/rajkaria/burn-rate
@@ -10,10 +10,17 @@
 set -uo pipefail
 
 # --- Configurable thresholds (override via env vars) ---
+# Prompt-count thresholds
 COMPACT_AT="${BURN_RATE_COMPACT:-8}"
 WARN_AT="${BURN_RATE_WARN:-15}"
 STRONG_AT="${BURN_RATE_STRONG:-25}"
 URGENT_AT="${BURN_RATE_URGENT:-40}"
+
+# Token-volume thresholds (whichever fires first — prompts or tokens)
+TOKEN_COMPACT_AT="${BURN_RATE_TOKEN_COMPACT:-10000000}"    # 10M
+TOKEN_WARN_AT="${BURN_RATE_TOKEN_WARN:-30000000}"          # 30M
+TOKEN_STRONG_AT="${BURN_RATE_TOKEN_STRONG:-60000000}"       # 60M
+TOKEN_URGENT_AT="${BURN_RATE_TOKEN_URGENT:-100000000}"      # 100M
 
 # Show dollar cost estimates? Only relevant for API/pay-per-token users.
 SHOW_COST="${BURN_RATE_SHOW_COST:-0}"
@@ -202,25 +209,26 @@ PARTS=()
 # v4: Token breakdown line (always shown when threshold hit)
 BREAKDOWN="[${TPP_FMT}/prompt | context: ${CACHE_READ_FMT} reads, ${CACHE_CREATE_FMT} writes | output: ${OUTPUT_FMT}]"
 
-if [ "$USER_MSG_COUNT" -ge "$URGENT_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Session is VERY large — each message re-sends the full ${TOKEN_FMT} context. Run /save-context and start a new session NOW.")
-  PARTS+=("  $BREAKDOWN")
-elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Session getting heavy. Run /save-context and start fresh.")
-  PARTS+=("  $BREAKDOWN")
-elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ]; then
-  # v4: Between 15-25, suggest /compact as alternative to new session
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens${COST_SUFFIX}]: Consider wrapping up soon. Run /compact to continue, or /save-context to start fresh.")
-elif [ "$USER_MSG_COUNT" -ge "$COMPACT_AT" ]; then
-  # v5: Early compact nudge — shrink context before it balloons
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT} tokens]: Context growing. Run /compact to compress prior conversation and reduce re-sent tokens.")
+# v6: Nudge on whichever fires first — prompt count OR token volume
+# Messages kept minimal — they're injected into context every prompt
+# Output directive tells Claude to minimize its own response tokens
+OUTPUT_DIRECTIVE="Keep responses minimal: no narration between tool calls, no summaries unless asked."
+
+if [ "$USER_MSG_COUNT" -ge "$URGENT_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_URGENT_AT" ]; then
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}]: /save-context and new session NOW. ${OUTPUT_DIRECTIVE}")
+elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_STRONG_AT" ]; then
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}]: Heavy session. /save-context and start fresh. ${OUTPUT_DIRECTIVE}")
+elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_WARN_AT" ]; then
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}]: /compact or /save-context. ${OUTPUT_DIRECTIVE}")
+elif [ "$USER_MSG_COUNT" -ge "$COMPACT_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_COMPACT_AT" ]; then
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}]: Run /compact. ${OUTPUT_DIRECTIVE}")
 fi
 
 # Subagent warnings
 if [ "$SUBAGENT_COUNT" -ge 15 ]; then
-  PARTS+=("SUBAGENT STORM: ${SUBAGENT_COUNT} subagents spawned — each loads full project context independently. Use targeted Grep/Glob instead.")
+  PARTS+=("SUBAGENT STORM: ${SUBAGENT_COUNT} spawned. Use Grep/Glob instead.")
 elif [ "$SUBAGENT_COUNT" -ge 8 ]; then
-  PARTS+=("SUBAGENT WARNING: ${SUBAGENT_COUNT} subagents so far. Consider more targeted tool calls to reduce token burn.")
+  PARTS+=("SUBAGENT WARNING: ${SUBAGENT_COUNT} so far. Prefer targeted tool calls.")
 fi
 
 if [ ${#PARTS[@]} -gt 0 ]; then
