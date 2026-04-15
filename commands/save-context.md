@@ -36,6 +36,8 @@ Do the following:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT:-/dev/null}/scripts/burn-rate.sh" 2>/dev/null || bash ~/.claude/scripts/burn-rate.sh 2>/dev/null
+# Also flush to history so /burn-trend picks it up
+bash "${CLAUDE_PLUGIN_ROOT:-/dev/null}/scripts/burn-rate-log.sh" 2>/dev/null || bash ~/.claude/scripts/burn-rate-log.sh 2>/dev/null
 ```
 
 Then summarize for the user:

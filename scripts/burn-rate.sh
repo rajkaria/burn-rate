@@ -65,10 +65,14 @@ done
 # --- Single Python call: prompts + tokens + breakdown + cost ---
 ANALYSIS=$(python3 - "$SESSION_FILE" "$PRICING_FILE" "$SHOW_COST" << 'PYEOF'
 import json, sys, os
+from collections import Counter, deque
 
 session_file = sys.argv[1]
 pricing_file = sys.argv[2]
 show_cost = sys.argv[3]
+
+# Track last N assistant turns' tool mix for model-switch suggestion
+recent_turns = deque(maxlen=5)  # each: set of tool names used
 
 # --- Default pricing (Opus 4.6 / Sonnet 4.6 / Haiku 4.5, April 2026) ---
 pricing = {
@@ -93,6 +97,7 @@ total_cache_create = 0
 total_cache_read = 0
 total_output = 0
 model = "opus"
+file_reads = Counter()
 
 try:
     with open(session_file) as f:
@@ -127,6 +132,20 @@ try:
                     model = "haiku"
                 elif "sonnet" in m.lower():
                     model = "sonnet"
+                # Per-file Read counter for re-read warnings
+                content = obj.get("message", {}).get("content", [])
+                tools_this_turn = set()
+                if isinstance(content, list):
+                    for b in content:
+                        if isinstance(b, dict) and b.get("type") == "tool_use":
+                            name = b.get("name", "")
+                            tools_this_turn.add(name)
+                            if name == "Read":
+                                p = (b.get("input") or {}).get("file_path", "")
+                                if p:
+                                    file_reads[p] += 1
+                if tools_this_turn:
+                    recent_turns.append(tools_this_turn)
 except Exception:
     pass
 
@@ -147,8 +166,24 @@ if show_cost == "1":
     ) / 1_000_000
     cost_cents = int(cost_dollars * 100)
 
-# Output: prompts total_tokens tokens_per_prompt cache_read cache_create output cost_cents model
-print(f"{human_prompts} {total_tokens} {tokens_per_prompt} {total_cache_read} {total_cache_create} {total_output} {cost_cents} {model}")
+# Trivial-streak detection for model-switch tip.
+# Trivial = last 5 turns used ONLY safe narrow tools (Bash/Read/Edit/Write/Glob/Grep)
+# and no Task/WebSearch/WebFetch anywhere in the window.
+TRIVIAL_OK = {"Bash", "Read", "Edit", "Write", "Glob", "Grep", "TodoWrite", "NotebookEdit"}
+HEAVY = {"Task", "Agent", "WebSearch", "WebFetch"}
+trivial_streak = (
+    len(recent_turns) >= 5 and model == "opus" and
+    all(not (t & HEAVY) and t.issubset(TRIVIAL_OK | HEAVY) for t in recent_turns)
+)
+
+# Worst re-read (basename + count), for live warning
+worst_path, worst_count = ("", 0)
+if file_reads:
+    worst_path, worst_count = file_reads.most_common(1)[0]
+worst_base = os.path.basename(worst_path) if worst_path else ""
+
+# Output: prompts total_tokens tokens_per_prompt cache_read cache_create output cost_cents model worst_count worst_basename trivial_streak
+print(f"{human_prompts} {total_tokens} {tokens_per_prompt} {total_cache_read} {total_cache_create} {total_output} {cost_cents} {model} {worst_count} {worst_base or '-'} {int(trivial_streak)}")
 PYEOF
 )
 
@@ -161,6 +196,15 @@ CACHE_CREATE=$(echo "$ANALYSIS" | awk '{print $5}')
 OUTPUT_TOKENS=$(echo "$ANALYSIS" | awk '{print $6}')
 COST_CENTS=$(echo "$ANALYSIS" | awk '{print $7}')
 MODEL=$(echo "$ANALYSIS" | awk '{print $8}')
+WORST_READ_COUNT=$(echo "$ANALYSIS" | awk '{print $9}')
+WORST_READ_FILE=$(echo "$ANALYSIS" | awk '{print $10}')
+TRIVIAL_STREAK=$(echo "$ANALYSIS" | awk '{print $11}')
+REREAD_WARN_AT="${BURN_RATE_REREAD_WARN:-5}"
+
+# One-shot per session: remember we've shown the model-switch tip
+TIP_FLAG_DIR="$HOME/.claude/.burn-rate/tips-shown"
+mkdir -p "$TIP_FLAG_DIR" 2>/dev/null
+TIP_FLAG="$TIP_FLAG_DIR/${CLAUDE_SESSION_ID:-unknown}.model-switch"
 
 # Handle Python failure
 if [ -z "$USER_MSG_COUNT" ] || [ -z "$TOTAL_TOKENS" ]; then
@@ -203,6 +247,28 @@ if [ "$SHOW_COST" = "1" ] && [ "$COST_CENTS" -gt 0 ]; then
   COST_SUFFIX=" | ~\$${COST_DOLLARS}.$(printf '%02d' $COST_REMAINDER)"
 fi
 
+# --- Plan budget % (for Max/Pro flat-rate users) ---
+# Translates tokens into "% of a heavy session" — a capacity signal
+# BURN_RATE_PLAN: pro | max | max20 | api (default: empty = hidden)
+# Or set BURN_RATE_SESSION_BUDGET directly in tokens.
+PLAN="${BURN_RATE_PLAN:-}"
+SESSION_BUDGET="${BURN_RATE_SESSION_BUDGET:-0}"
+if [ "$SESSION_BUDGET" = "0" ]; then
+  case "$PLAN" in
+    pro)   SESSION_BUDGET=50000000 ;;      # 50M
+    max)   SESSION_BUDGET=150000000 ;;     # 150M
+    max20) SESSION_BUDGET=500000000 ;;     # 500M
+    *)     SESSION_BUDGET=0 ;;
+  esac
+fi
+BUDGET_SUFFIX=""
+if [ "$SESSION_BUDGET" -gt 0 ] && [ "$TOTAL_TOKENS" -gt 0 ]; then
+  # Integer percentage (bash)
+  PCT=$((TOTAL_TOKENS * 100 / SESSION_BUDGET))
+  PLAN_LABEL="${PLAN:-budget}"
+  BUDGET_SUFFIX=" | ${PCT}% of ${PLAN_LABEL}"
+fi
+
 # --- Build output ---
 PARTS=()
 
@@ -215,13 +281,24 @@ BREAKDOWN="[${TPP_FMT}/prompt | context: ${CACHE_READ_FMT} reads, ${CACHE_CREATE
 OUTPUT_DIRECTIVE="Keep responses minimal: no narration between tool calls, no summaries unless asked."
 
 if [ "$USER_MSG_COUNT" -ge "$URGENT_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_URGENT_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}]: /save-context and new session NOW. ${OUTPUT_DIRECTIVE}")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}${BUDGET_SUFFIX}]: /save-context and new session NOW. ${OUTPUT_DIRECTIVE}")
 elif [ "$USER_MSG_COUNT" -ge "$STRONG_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_STRONG_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}]: Heavy session. /save-context and start fresh. ${OUTPUT_DIRECTIVE}")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}${BUDGET_SUFFIX}]: Heavy session. /save-context and start fresh. ${OUTPUT_DIRECTIVE}")
 elif [ "$USER_MSG_COUNT" -ge "$WARN_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_WARN_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}]: /compact or /save-context. ${OUTPUT_DIRECTIVE}")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${COST_SUFFIX}${BUDGET_SUFFIX}]: /compact or /save-context. ${OUTPUT_DIRECTIVE}")
 elif [ "$USER_MSG_COUNT" -ge "$COMPACT_AT" ] || [ "$TOTAL_TOKENS" -ge "$TOKEN_COMPACT_AT" ]; then
-  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}]: Run /compact. ${OUTPUT_DIRECTIVE}")
+  PARTS+=("BURN RATE [${USER_MSG_COUNT} prompts | ${TOKEN_FMT}${BUDGET_SUFFIX}]: Run /compact. ${OUTPUT_DIRECTIVE}")
+fi
+
+# Model-switch tip (one-shot per session)
+if [ "${TRIVIAL_STREAK:-0}" = "1" ] && [ ! -f "$TIP_FLAG" ] && [ "${BURN_RATE_NO_MODEL_TIP:-0}" != "1" ]; then
+  PARTS+=("MODEL TIP: last 5 turns were narrow edits — switch to Haiku with /model haiku for ~5× cheaper. (shown once)")
+  touch "$TIP_FLAG" 2>/dev/null
+fi
+
+# Per-file re-read warning (feature #2)
+if [ -n "$WORST_READ_COUNT" ] && [ "$WORST_READ_COUNT" -ge "$REREAD_WARN_AT" ] && [ "$WORST_READ_FILE" != "-" ]; then
+  PARTS+=("RE-READ WARNING: '${WORST_READ_FILE}' read ${WORST_READ_COUNT}× — pin it or /save-context.")
 fi
 
 # Subagent warnings

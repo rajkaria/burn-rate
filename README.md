@@ -154,6 +154,72 @@ Claude: [reads CLAUDE.md]
 
 **Two sessions. ~2M tokens total. Instead of one monster session burning 40M+.**
 
+### `/burn-report` — see where your tokens actually went
+
+The warnings tell you *when* you're burning. `/burn-report` shows *why*. It's a visual postmortem of your session — the file that got read 42 times, the paste bomb that keeps getting re-sent, the turn that cost 40% of the whole session.
+
+```
+You: /burn-report
+```
+
+```
+┌──────────────────────────────── BURN REPORT ─────────────────────────────────┐
+│ Window:  2026-04-07T09:12 → 2026-04-07T16:48                                │
+│ Model:   opus                                                               │
+│ 🔥 RUNAWAY — this session cost ~5x what it should have                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────── TOTALS ───────────────────────────────────┐
+│ Human prompts:        62                                                    │
+│ Total tokens:         187.4M                                                │
+│ Tokens per prompt:    3.0M   ← burn velocity                                │
+│ Tools invoked:        418                                                   │
+│ Subagents spawned:    23                                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────── WHERE YOUR TOKENS WENT ───────────────────────────┐
+│ cache reads  (re-sent)   ██████████████████████░░ 170.1M 90.8%              │
+│ cache writes (new)       █░░░░░░░░░░░░░░░░░░░░░░░  12.4M  6.6%              │
+│ input        (uncached)  ░░░░░░░░░░░░░░░░░░░░░░░░   1.2M  0.6%              │
+│ output       (reply)     ░░░░░░░░░░░░░░░░░░░░░░░░   3.7M  2.0%              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────── FILES RE-READ (the silent killer) ──────────────────────┐
+│  42×  src/auth/middleware.ts                                        🚨      │
+│  31×  src/db/schema.ts                                              🚨      │
+│  18×  package.json                                                  🚨      │
+│   9×  src/pages/login.tsx                                           🚨      │
+│   4×  src/pages/signup.tsx                                          ⚠️      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────── BIGGEST CONTEXT TURNS (largest single-message cost) ─────────────┐
+│ turn #47     74.2M  ██████████████████████░░░░░░░░ 39.6% of session         │
+│ turn #52     21.1M  ██████░░░░░░░░░░░░░░░░░░░░░░░░ 11.3% of session         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────── PASTE BOMBS (user messages ≥ 2K chars — re-sent every turn) ─────┐
+│  62.1K chars  "Here's the spec, implement all of it: ## Feature 1…"         │
+│  14.8K chars  "Build failed, here's the full stack trace…"                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────── WHAT TO DO NEXT ───────────────────────────────┐
+│ • middleware.ts read 42× — pin it or start fresh session                    │
+│ • 23 subagents spawned — prefer Grep/Glob for narrow searches               │
+│ • Pasted 62.1K chars — move large blobs to a file and reference it          │
+│ • 3.0M/prompt is heavy — /save-context and start fresh                      │
+│ • 91% is re-sent context — session length is the problem                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+Share the screenshot. That's usually all it takes.
+
+**Report a specific past session:**
+
+```
+/burn-report 179f391c-4ae4-4127-8b7e-4c7b0aaaecc7
+/burn-report ~/.claude/projects/my-project/abc123.jsonl
+```
+
 ### `/burn-rate` — check your stats anytime
 
 Don't want to wait for a warning? Just ask:
@@ -201,6 +267,15 @@ Real stat: one file was read 42 times in a single session. Why? Because after co
 | Token breakdown | See exactly what's eating tokens: cache reads vs writes vs output |
 | Tokens per prompt | Know your burn velocity — is context growing fast or slow? |
 | `/burn-rate` | Check your full session stats anytime |
+| `/burn-report` | Visual postmortem: top re-read files, paste bombs, context jumps |
+| `/burn-lint` | Audits CLAUDE.md for bloat (every line re-sent each prompt) |
+| Re-read warnings | Inline warning when one file is read 5+ times |
+| Plan budget % | Optional "% of session budget" display for Max/Pro users |
+| `/burn-trend` | Cross-session trends — week-over-week tokens, top projects |
+| Subagent budget gate | Forces confirm after N subagents spawn (catches spec-paste disasters) |
+| Paste saver | Large pastes auto-saved to a file — swap to `@file` on next turn |
+| Session resume | New session? Burn Rate reads CLAUDE.md and primes Claude to continue |
+| Model-switch tip | Suggests Haiku when you're on a trivial-edit streak (shown once) |
 | `/save-context` | Save state to CLAUDE.md + post-session burn report |
 | `/compact` suggestion | At 15-25 prompts, suggests compact as alternative to new session |
 | Smart rules | Claude pushes back on vague prompts and spec pasting |
@@ -212,10 +287,184 @@ Zero config. Works immediately. Adds <50ms per prompt.
 ## Configuration
 
 ```bash
-export BURN_RATE_WARN=15       # Gentle nudge threshold (default: 15)
-export BURN_RATE_STRONG=25     # Strong warning threshold (default: 25)
-export BURN_RATE_URGENT=40     # Urgent stop threshold (default: 40)
-export BURN_RATE_SHOW_COST=1   # Show $ estimates (for API/pay-per-token users only)
+export BURN_RATE_WARN=15              # Gentle nudge threshold (default: 15)
+export BURN_RATE_STRONG=25            # Strong warning threshold (default: 25)
+export BURN_RATE_URGENT=40            # Urgent stop threshold (default: 40)
+export BURN_RATE_REREAD_WARN=5        # Warn when one file is read N times (default: 5)
+export BURN_RATE_SHOW_COST=1          # Show $ estimates (API/pay-per-token users only)
+export BURN_RATE_PLAN=max             # pro | max | max20 → shows "% of session budget"
+export BURN_RATE_SESSION_BUDGET=0     # Override budget in tokens (0 = use plan default)
+export BURN_RATE_SUBAGENT_BUDGET=5    # Confirm before spawning >N subagents (0 = disable)
+export BURN_RATE_PASTE_WARN=3000      # Chars threshold for paste saver (default: 3000)
+export BURN_RATE_NO_DIET=1            # Disable paste saver entirely
+export BURN_RATE_NO_RESUME=1          # Disable session auto-resume
+export BURN_RATE_RESUME_MAX_AGE_DAYS=7 # Stale-after days for resume (default: 7)
+export BURN_RATE_NO_MODEL_TIP=1       # Silence the Haiku suggestion
+```
+
+### Re-read warnings (feature)
+
+When the same file gets read 5+ times in a session — the classic post-compaction waste — you'll see:
+
+```
+RE-READ WARNING: 'middleware.ts' read 6× — pin it or /save-context.
+```
+
+Pin frequently-used files with `@src/auth/middleware.ts` at the start of your message so Claude sees them without re-reading.
+
+### Plan budget % (for Max/Pro users)
+
+Flat-rate plans don't care about dollars — they care about rate-limit capacity. Set `BURN_RATE_PLAN` and tokens are shown as percent of a reasonable "heavy session" budget:
+
+```
+BURN RATE [22 prompts | 45.2M | 30% of max]: Heavy session. /save-context.
+```
+
+| Plan | Default session budget |
+|------|------------------------|
+| `pro` | 50M tokens |
+| `max` | 150M tokens |
+| `max20` | 500M tokens |
+
+Override with `BURN_RATE_SESSION_BUDGET=<tokens>` for your own calibration.
+
+### `/burn-trend` — week-over-week trends
+
+The plugin logs every session (anonymously, locally) to `~/.claude/.burn-rate/history.jsonl` on SessionEnd. `/burn-trend` turns that into a report:
+
+```
+You: /burn-trend
+```
+
+```
+┌──────────────────────────────── BURN-TREND ────────────────────────────────┐
+│ History: ~/.claude/.burn-rate/history.jsonl                                │
+│ Sessions logged: 47                                                        │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────── LAST 7 DAYS ────────────────────────────────┐
+│ Sessions:         12                                                       │
+│ Total tokens:     94.3M                                                    │
+│ Avg per session:  7.9M                                                     │
+│ Tokens/prompt:    812K                                                     │
+│ Subagents:        11                                                       │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────── WEEK-OVER-WEEK ──────────────────────────────┐
+│ Tokens:           218.4M → 94.3M   (-57%)                                  │
+│ Avg per session:  15.6M → 7.9M     (-49%)                                  │
+│ Tokens/prompt:    1.8M → 812K      (-55%)                                  │
+│ 🎉 Trending leaner — keep going.                                           │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────── TOP PROJECTS (last 7 days) ────────────────────────┐
+│   52.1M   7 sessions  my-saas                                              │
+│   31.4M   3 sessions  burn-rate                                            │
+│   10.8M   2 sessions  blog                                                 │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+History is purely local — no uploads, ever. Capped at 500 rows (~6 months) to stay small.
+
+### Paste saver (zero-friction paste mitigation)
+
+Pasted a big log or spec? Burn Rate silently saves it to `./.burn-rate/pastes/paste-TIMESTAMP.txt` and tells Claude to reference it on the next turn. **Your current turn works as usual** — the paste still goes through. On the next turn, Claude suggests `@.burn-rate/pastes/paste-xxx.txt` instead, saving the re-send cost forever after.
+
+```
+You: [pastes a 15K-char build log]
+      Please find the root cause of the failure.
+
+Claude: [works on it normally this turn]
+        💡 Burn Rate saved your paste to .burn-rate/pastes/paste-20260407-143022.txt
+        — reference @that file next turn instead of re-pasting to save ~3.7K tokens/turn.
+```
+
+`.burn-rate/` is auto-added to `.gitignore`. Disable with `BURN_RATE_NO_DIET=1`, or raise the threshold with `BURN_RATE_PASTE_WARN=10000` if 3K is too tight for your workflow.
+
+### Session auto-resume
+
+Start a new session in a project that has a recent `## Session Context` block in `CLAUDE.md` — Burn Rate reads it and quietly primes Claude with the context:
+
+```
+[You open a fresh Claude Code session in ./my-saas]
+
+Claude: I see we left off yesterday with the signup page form validation pending.
+        Auth is done, login is working. Want to continue there, or something else?
+```
+
+- **Fresh (<7d):** primed silently, Claude acknowledges briefly and waits for your direction.
+- **Stale (>7d):** Claude flags it and asks before using — old context shouldn't ambush you.
+- **Git diverged:** Claude notes that HEAD moved since the block was written.
+
+Never auto-executes anything. Disable with `BURN_RATE_NO_RESUME=1`.
+
+### Model-switch tip (one-shot Haiku suggestion)
+
+When your last 5 turns have been narrow edits (Bash/Read/Edit only, no Task/WebSearch), Burn Rate suggests switching to Haiku:
+
+```
+MODEL TIP: last 5 turns were narrow edits — switch to Haiku with /model haiku for
+~5× cheaper. (shown once)
+```
+
+Shown **at most once per session** — never nags. Silence entirely with `BURN_RATE_NO_MODEL_TIP=1`.
+
+### Subagent budget gate (catches the 60-agent disaster)
+
+The #1 token-burn event: you paste a spec, Claude spawns 60 parallel agents, each loads the full project context. **50M+ tokens gone in one prompt.**
+
+After `BURN_RATE_SUBAGENT_BUDGET` subagents (default 5) have already been spawned in the session, every further `Task` call pauses and asks you to confirm:
+
+```
+🛑 Confirm tool use: Task
+
+   Burn Rate: 6 subagents already spawned (budget: 5).
+   Each subagent loads full context independently.
+   Confirm to continue, or use Grep/Glob for narrow searches.
+
+   [Allow] [Deny]
+```
+
+Disable with `BURN_RATE_SUBAGENT_BUDGET=0`. Raise the budget if you routinely need more.
+
+### `/burn-lint` — audit your CLAUDE.md
+
+Every line in `CLAUDE.md` (project-root or `~/.claude/`) is re-sent with every prompt. A bloated CLAUDE.md silently taxes every session forever.
+
+```
+You: /burn-lint
+```
+
+```
+┌────────────────────────────── BURN-RATE LINT ──────────────────────────────┐
+│ File: ./CLAUDE.md                                                          │
+│ 🔥 BLOATED — this file adds massive overhead to every session              │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────── SIZE ───────────────────────────────────┐
+│ Lines:            1,247                                                    │
+│ Characters:       52.3K                                                    │
+│ Estimated tokens: ~13.1K   (re-sent every prompt)                          │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────── SECTIONS (## headings) ──────────────────────────┐
+│  412 lines  Architecture Overview                                  🚨      │
+│  287 lines  Coding Standards                                       🚨      │
+│  156 lines  Past Session Notes                                     ⚠️      │
+│   89 lines  API Conventions                                                │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────── RECOMMENDATIONS ──────────────────────────────┐
+│ • ~13.1K tokens × every prompt — prune aggressively                        │
+│ • Biggest section 'Architecture Overview' is 412 lines — move details out  │
+│ • Split by topic: CONTRIBUTING.md, ARCHITECTURE.md, etc.                   │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+Pass a path to lint a specific file:
+
+```
+/burn-lint path/to/OTHER.md
 ```
 
 ### Who should enable cost display?
