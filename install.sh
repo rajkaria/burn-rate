@@ -80,90 +80,84 @@ if [ -f "$SCRIPTS_DIR/session-guard.sh" ]; then
   warn "Removed old session-guard.sh (replaced by burn-rate.sh)"
 fi
 
-# --- Install burn-rate.sh ---
-fetch_file "scripts/burn-rate.sh" "$SCRIPTS_DIR/burn-rate.sh"
-chmod +x "$SCRIPTS_DIR/burn-rate.sh"
-info "Installed burn-rate.sh"
+# --- Install scripts ---
+for s in burn-rate.sh burn-report.sh burn-rate-lint.sh burn-rate-log.sh \
+         burn-trend.sh burn-rate-subagent-gate.sh burn-rate-paste-saver.sh \
+         burn-rate-resume.sh; do
+  fetch_file "scripts/$s" "$SCRIPTS_DIR/$s"
+  chmod +x "$SCRIPTS_DIR/$s" 2>/dev/null || true
+  info "Installed $s"
+done
 
-# --- Install save-context command ---
-fetch_file "commands/save-context.md" "$COMMANDS_DIR/save-context.md"
-info "Installed /save-context command"
-
-# --- Install burn-rate stats command ---
-fetch_file "commands/burn-rate.md" "$COMMANDS_DIR/burn-rate.md"
-info "Installed /burn-rate command"
+# --- Install slash commands ---
+for c in save-context.md burn-rate.md burn-report.md burn-lint.md burn-trend.md; do
+  fetch_file "commands/$c" "$COMMANDS_DIR/$c"
+  info "Installed /${c%.md} command"
+done
 
 # --- Install pricing.json ---
 fetch_file "pricing.json" "$SCRIPTS_DIR/pricing.json"
 info "Installed pricing.json (edit to update when Anthropic changes rates)"
 
-# --- Update settings.json with hook ---
-if [ -f "$SETTINGS_FILE" ]; then
-  if grep -q "burn-rate" "$SETTINGS_FILE" 2>/dev/null; then
-    info "Hook already configured in settings.json (skipping)"
-  else
-    python3 << 'PYEOF'
-import json, sys, os
+# --- Update settings.json with all hooks ---
+python3 << 'PYEOF'
+import json, os
 
 settings_file = os.path.expanduser("~/.claude/settings.json")
+scripts = "~/.claude/scripts"
 
 try:
     with open(settings_file) as f:
         settings = json.load(f)
 except (json.JSONDecodeError, FileNotFoundError):
-    print("Warning: Could not parse settings.json, creating backup", file=sys.stderr)
     settings = {}
 
-hook_entry = {
-    "matcher": "",
-    "hooks": [{"type": "command", "command": "bash ~/.claude/scripts/burn-rate.sh"}]
-}
+settings.setdefault("hooks", {})
 
-if "hooks" not in settings:
-    settings["hooks"] = {}
+def cmd(script):
+    return {"type": "command", "command": f"bash {scripts}/{script}"}
 
-if "UserPromptSubmit" not in settings["hooks"]:
-    settings["hooks"]["UserPromptSubmit"] = []
+def has(event, matcher, script_substr):
+    for h in settings["hooks"].get(event, []):
+        if h.get("matcher", "") != matcher:
+            continue
+        for hk in h.get("hooks", []):
+            if script_substr in hk.get("command", ""):
+                return True
+    return False
 
-# Remove old session-guard hooks if present
-settings["hooks"]["UserPromptSubmit"] = [
-    h for h in settings["hooks"]["UserPromptSubmit"]
-    if not any("session-guard" in hook.get("command", "") for hook in h.get("hooks", []))
-]
+def ensure(event, matcher, script):
+    settings["hooks"].setdefault(event, [])
+    # purge legacy session-guard entries
+    if event == "UserPromptSubmit":
+        settings["hooks"][event] = [
+            h for h in settings["hooks"][event]
+            if not any("session-guard" in hk.get("command", "") for hk in h.get("hooks", []))
+        ]
+    if has(event, matcher, script):
+        return
+    # append to existing matcher group if one exists
+    for h in settings["hooks"][event]:
+        if h.get("matcher", "") == matcher:
+            h.setdefault("hooks", []).append(cmd(script))
+            return
+    settings["hooks"][event].append({"matcher": matcher, "hooks": [cmd(script)]})
 
-# Check if burn-rate already present
-existing = [h for h in settings["hooks"]["UserPromptSubmit"]
-            if any("burn-rate" in hook.get("command", "") for hook in h.get("hooks", []))]
-
-if not existing:
-    settings["hooks"]["UserPromptSubmit"].append(hook_entry)
+# SessionStart: resume prior context
+ensure("SessionStart",     "",     "burn-rate-resume.sh")
+# UserPromptSubmit: paste saver first, then main analyzer
+ensure("UserPromptSubmit", "",     "burn-rate-paste-saver.sh")
+ensure("UserPromptSubmit", "",     "burn-rate.sh")
+# PreToolUse:Task: subagent budget gate
+ensure("PreToolUse",       "Task", "burn-rate-subagent-gate.sh")
+# SessionEnd: history logger
+ensure("SessionEnd",       "",     "burn-rate-log.sh")
 
 with open(settings_file, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
 PYEOF
-    info "Added UserPromptSubmit hook to settings.json"
-  fi
-else
-  cat > "$SETTINGS_FILE" << 'SETTINGS_EOF'
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/scripts/burn-rate.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-SETTINGS_EOF
-  info "Created settings.json with hook"
-fi
+info "Wired all burn-rate hooks into settings.json (SessionStart, UserPromptSubmit, PreToolUse:Task, SessionEnd)"
 
 # --- Update global CLAUDE.md ---
 if [ -f "$CLAUDE_MD" ]; then
@@ -208,6 +202,10 @@ else
 fi
 echo "    - Command:  /save-context                   (save session state)"
 echo "    - Command:  /burn-rate                      (check stats on demand)"
+echo "    - Command:  /burn-report                    (visual postmortem)"
+echo "    - Command:  /burn-lint                      (CLAUDE.md bloat audit)"
+echo "    - Command:  /burn-trend                     (week-over-week trends)"
+echo "    - Hooks:    SessionStart resume, paste saver, subagent gate, history logger"
 echo "    - Rules:    ~/.claude/CLAUDE.md              (global session rules)"
 echo ""
 echo "  Configuration (env vars in your shell profile):"
