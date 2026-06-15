@@ -73,7 +73,8 @@ fi
 if [ -z "$SESSION_FILE" ]; then
   CWD_FOR_SCOPE="${HOOK_CWD:-$PWD}"
   # Claude stores per-project dirs as the cwd with / replaced by -
-  PROJECT_KEY="-$(printf '%s' "$CWD_FOR_SCOPE" | sed 's|/|-|g' | sed 's|^-||')"
+  # Claude Code's per-project dir replaces BOTH / and . with - (so /.claude -> --claude)
+  PROJECT_KEY="-$(printf '%s' "$CWD_FOR_SCOPE" | sed 's|[/.]|-|g' | sed 's|^-||')"
   PROJECT_DIR="$PROJECTS_DIR/$PROJECT_KEY"
   if [ -d "$PROJECT_DIR" ]; then
     SESSION_FILE=$(find "$PROJECT_DIR" -maxdepth 1 -name "*.jsonl" -type f -print0 2>/dev/null \
@@ -208,10 +209,13 @@ if show_cost == "1":
 # and no Task/WebSearch/WebFetch anywhere in the window.
 TRIVIAL_OK = {"Bash", "Read", "Edit", "Write", "Glob", "Grep", "TodoWrite", "NotebookEdit"}
 HEAVY = {"Task", "Agent", "WebSearch", "WebFetch"}
-trivial_streak = (
-    len(recent_turns) >= 5 and model == "opus" and
+# "lull" = last 5 turns were all light/narrow work (no heavy tools) — a natural
+# break where compaction is safe. trivial_streak adds the Opus check (model tip).
+lull = (
+    len(recent_turns) >= 5 and
     all(not (t & HEAVY) and t.issubset(TRIVIAL_OK | HEAVY) for t in recent_turns)
 )
+trivial_streak = lull and model == "opus"
 
 # Worst re-read (basename + count), for live warning
 worst_path, worst_count = ("", 0)
@@ -220,7 +224,7 @@ if file_reads:
 worst_base = os.path.basename(worst_path) if worst_path else ""
 
 # Output: prompts total_tokens tokens_per_prompt cache_read cache_create output cost_cents model worst_count worst_basename trivial_streak
-print(f"{human_prompts} {total_tokens} {tokens_per_prompt} {total_cache_read} {total_cache_create} {total_output} {cost_cents} {model} {worst_count} {worst_base or '-'} {int(trivial_streak)}")
+print(f"{human_prompts} {total_tokens} {tokens_per_prompt} {total_cache_read} {total_cache_create} {total_output} {cost_cents} {model} {worst_count} {worst_base or '-'} {int(trivial_streak)} {int(lull)}")
 PYEOF
 )
 
@@ -236,6 +240,7 @@ MODEL=$(echo "$ANALYSIS" | awk '{print $8}')
 WORST_READ_COUNT=$(echo "$ANALYSIS" | awk '{print $9}')
 WORST_READ_FILE=$(echo "$ANALYSIS" | awk '{print $10}')
 TRIVIAL_STREAK=$(echo "$ANALYSIS" | awk '{print $11}')
+LULL=$(echo "$ANALYSIS" | awk '{print $12}')
 REREAD_WARN_AT="${BURN_RATE_REREAD_WARN:-5}"
 
 # One-shot per session: remember we've shown the model-switch tip
@@ -331,6 +336,18 @@ fi
 if [ "${TRIVIAL_STREAK:-0}" = "1" ] && [ ! -f "$TIP_FLAG" ] && [ "${BURN_RATE_NO_MODEL_TIP:-0}" != "1" ]; then
   PARTS+=("MODEL TIP: last 5 turns were narrow edits — switch to Haiku with /model haiku for ~5× cheaper. (shown once)")
   touch "$TIP_FLAG" 2>/dev/null
+fi
+
+# Strategic compaction tip (one-shot): a large, mostly-re-read context during a
+# light-work lull is the ideal moment to /compact — you shed accumulated context
+# right at a task boundary, while it's cheap to re-establish what matters.
+STRATEGIC_FLAG="$TIP_FLAG_DIR/${CLAUDE_SESSION_ID:-unknown}.strategic-compact"
+STRATEGIC_AT="${BURN_RATE_STRATEGIC_COMPACT:-5000000}"   # 5M floor
+if [ "${LULL:-0}" = "1" ] && [ "$TOTAL_TOKENS" -ge "$STRATEGIC_AT" ] \
+   && [ ! -f "$STRATEGIC_FLAG" ] && [ "${BURN_RATE_NO_COMPACT_TIP:-0}" != "1" ] \
+   && [ "$TOTAL_TOKENS" -gt 0 ] && [ "$((CACHE_READ * 100 / TOTAL_TOKENS))" -ge 70 ]; then
+  PARTS+=("STRATEGIC COMPACT: ${TOKEN_FMT} context, mostly re-read — and you're at a light-work lull. Ideal moment to /compact before the next task. (shown once)")
+  touch "$STRATEGIC_FLAG" 2>/dev/null
 fi
 
 # Per-file re-read warning (feature #2)

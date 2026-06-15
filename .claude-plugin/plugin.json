@@ -1,6 +1,6 @@
 {
   "name": "burn-rate",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Real-time session token monitoring with burn velocity, token breakdown, and on-demand per-feature context routing for Claude Code.",
   "author": {
     "name": "rajkaria",

@@ -271,8 +271,8 @@ Real stat: one file was read 42 times in a single session. Why? Because after co
 | Token breakdown | See exactly what's eating tokens: cache reads vs writes vs output |
 | Tokens per prompt | Know your burn velocity — is context growing fast or slow? |
 | `/burn-rate` | Check your full session stats anytime |
-| `/burn-report` | Visual postmortem: top re-read files, paste bombs, context jumps |
-| `/burn-lint` | Audits CLAUDE.md for bloat (every line re-sent each prompt) |
+| `/burn-report` | Visual postmortem: re-read files + wasted-token cost, paste bombs, context jumps |
+| `/burn-lint` | Audits CLAUDE.md bloat, `docs/context/` health, and eager MCP servers |
 | Re-read warnings | Inline warning when one file is read 5+ times |
 | Plan budget % | Optional "% of session budget" display for Max/Pro users |
 | `/burn-trend` | Cross-session trends — week-over-week tokens, top projects |
@@ -282,6 +282,7 @@ Real stat: one file was read 42 times in a single session. Why? Because after co
 | `/burn-context-init` | One-time: split a bloated CLAUDE.md into routable `docs/context/` docs |
 | Session resume | Pre-migration fallback: reads a `## Session Context` block from CLAUDE.md |
 | Model-switch tip | Suggests Haiku when you're on a trivial-edit streak (shown once) |
+| Strategic compact tip | Nudges /compact at the optimal moment: big, re-read-heavy context at a lull |
 | `/save-context` | Save state to CLAUDE.md + post-session burn report |
 | `/compact` suggestion | At 15-25 prompts, suggests compact as alternative to new session |
 | Smart rules | Claude pushes back on vague prompts and spec pasting |
@@ -309,6 +310,8 @@ export BURN_RATE_CONTEXT_DIR=docs/context # Where per-feature context docs live
 export BURN_RATE_ROUTER_MAX_DOCS=3    # Max feature docs the router injects (default: 3)
 export BURN_RATE_ROUTER_MAX_CHARS=1500 # Max chars injected per doc (default: 1500)
 export BURN_RATE_NO_ROUTER=1          # Disable the SessionStart context router
+export BURN_RATE_STRATEGIC_COMPACT=5000000 # Token floor for the strategic /compact tip
+export BURN_RATE_NO_COMPACT_TIP=1     # Silence the strategic compaction tip
 export BURN_RATE_NO_MODEL_TIP=1       # Silence the Haiku suggestion
 ```
 
@@ -435,6 +438,17 @@ MODEL TIP: last 5 turns were narrow edits — switch to Haiku with /model haiku 
 
 Shown **at most once per session** — never nags. Silence entirely with `BURN_RATE_NO_MODEL_TIP=1`.
 
+### Strategic compaction tip
+
+Raw token thresholds tell you the session is *big*; they don't tell you it's a good *moment* to compact. This tip fires once, when three things line up: context is large, it's **mostly re-read** (so compaction would actually shed weight), and you're at a **light-work lull** (narrow edits, no heavy tools) — i.e. a task boundary where you won't lose anything you still need:
+
+```
+STRATEGIC COMPACT: 45.2M context, mostly re-read — and you're at a light-work lull.
+Ideal moment to /compact before the next task. (shown once)
+```
+
+Tune the floor with `BURN_RATE_STRATEGIC_COMPACT` (default 5M tokens) or silence it with `BURN_RATE_NO_COMPACT_TIP=1`.
+
 ### Subagent budget gate (catches the 60-agent disaster)
 
 The #1 token-burn event: you paste a spec, Claude spawns 60 parallel agents, each loads the full project context. **50M+ tokens gone in one prompt.**
@@ -455,7 +469,7 @@ Disable with `BURN_RATE_SUBAGENT_BUDGET=0`. Raise the budget if you routinely ne
 
 ### `/burn-lint` — audit your CLAUDE.md
 
-Every line in `CLAUDE.md` (project-root or `~/.claude/`) is re-sent with every prompt. A bloated CLAUDE.md silently taxes every session forever.
+Every line in `CLAUDE.md` (project-root or `~/.claude/`) is re-sent with every prompt. A bloated CLAUDE.md silently taxes every session forever. `/burn-lint` also audits your `docs/context/` docs (unroutable / stale / bloated) and your **eagerly-loaded MCP servers** — every enabled `mcpServers` entry adds its full tool schema to *every* turn (plugin tools that defer via ToolSearch don't, and are reported as fine).
 
 ```
 You: /burn-lint

@@ -220,6 +220,27 @@ else:
     print(row("(no Read calls)"))
 print(footer())
 
+# ---------- Re-read cost (avoidable tokens) ----------
+import os as _os
+_redundant = sum(c - 1 for c in file_reads.values() if c > 1)
+if _redundant:
+    _waste = 0
+    for _p, _c in file_reads.items():
+        if _c > 1:
+            try:
+                _waste += (_c - 1) * (_os.path.getsize(_p) // 4)
+            except OSError:
+                pass
+    print()
+    print(title("RE-READ COST (avoidable)"))
+    _msg = f"{_redundant} redundant re-read(s)"
+    if _waste:
+        _msg += f"  ≈ {fmt(_waste)} tokens re-injected"
+    print(row(_msg))
+    print(row("Each re-read re-sends the whole file into context. Fix: keep the"))
+    print(row("file pinned, or let claude-mem semantic-prime instead of re-Reading."))
+    print(footer())
+
 # ---------- Top edits ----------
 if file_edits:
     print()

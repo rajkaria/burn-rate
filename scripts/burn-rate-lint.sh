@@ -27,11 +27,8 @@ else
 fi
 
 if [ ${#FILES[@]} -eq 0 ]; then
-  echo "No CLAUDE.md found in $(pwd) or ~/.claude/"
-  echo "Pass a path: burn-rate-lint.sh path/to/CLAUDE.md"
-  exit 0
-fi
-
+  echo "No CLAUDE.md found in $(pwd) or ~/.claude/ — auditing context docs + MCP only."
+else
 for F in "${FILES[@]}"; do
   python3 - "$F" << 'PYEOF'
 import sys, os, re, hashlib
@@ -154,6 +151,7 @@ print(footer())
 print()
 PYEOF
 done
+fi
 
 # --- Context Router docs audit (docs/context/) ---
 CTX_DIR="${BURN_RATE_CONTEXT_DIR:-docs/context}"
@@ -243,3 +241,72 @@ if docs:
     print()
 PYEOF
 fi
+
+# --- MCP / tool-schema audit (what's re-sent every turn besides CLAUDE.md) ---
+python3 - << 'PYEOF'
+import json, os
+
+W = 78
+def row(s, W=78):
+    s = s[:W-4]; return "│ " + s + " " * (W - 3 - len(s)) + "│"
+def title(s, W=78):
+    s = f" {s} "; pad = W - 2 - len(s); l = pad // 2
+    return "┌" + "─"*l + s + "─"*(pad-l) + "┐"
+def footer(W=78): return "└" + "─"*(W-2) + "┘"
+
+home = os.path.expanduser("~")
+eager = {}          # name -> source (eagerly-loaded = schema in every turn)
+plugins = 0
+
+def add(servers, src):
+    if isinstance(servers, dict):
+        for name in servers:
+            eager.setdefault(name, src)
+
+# Project-scoped .mcp.json (loads eagerly once the project is trusted)
+if os.path.isfile(".mcp.json"):
+    try:
+        add(json.load(open(".mcp.json")).get("mcpServers", {}), ".mcp.json")
+    except Exception:
+        pass
+
+# ~/.claude.json — global + per-project mcpServers
+cj = os.path.join(home, ".claude.json")
+if os.path.isfile(cj):
+    try:
+        d = json.load(open(cj))
+        add(d.get("mcpServers", {}), "~/.claude.json")
+        proj = d.get("projects", {}).get(os.getcwd())
+        if isinstance(proj, dict):
+            add(proj.get("mcpServers", {}), "~/.claude.json (this project)")
+    except Exception:
+        pass
+
+# settings.json / settings.local.json — mcpServers + enabledPlugins
+for s in ("settings.json", "settings.local.json"):
+    p = os.path.join(home, ".claude", s)
+    if os.path.isfile(p):
+        try:
+            d = json.load(open(p))
+            add(d.get("mcpServers", {}), f"~/.claude/{s}")
+            plugins = max(plugins, sum(1 for v in d.get("enabledPlugins", {}).values() if v))
+        except Exception:
+            pass
+
+print()
+print(title("MCP / TOOL SCHEMAS (re-sent every turn)"))
+if eager:
+    print(row(f"{len(eager)} eagerly-loaded MCP server(s) — schema in EVERY prompt:"))
+    for name, src in sorted(eager.items()):
+        print(row(f"  - {name}   ({src})"))
+    print(row(""))
+    print(row("Each adds its full tool schema to context on every turn. Disable any"))
+    print(row("you don't use; prefer servers/plugins that defer tool loading."))
+else:
+    print(row("OK - no eagerly-loaded mcpServers found."))
+    if plugins:
+        print(row(f"  {plugins} plugin(s) enabled; their tools are deferred (ToolSearch),"))
+        print(row("  so they don't tax every turn."))
+print(footer())
+print()
+PYEOF

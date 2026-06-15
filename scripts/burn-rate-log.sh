@@ -46,7 +46,8 @@ if [ -z "$SESSION_FILE" ] && [ -n "$SESSION_ID" ]; then
 fi
 if [ -z "$SESSION_FILE" ]; then
   CWD_FOR_SCOPE="${HOOK_CWD:-$PWD}"
-  PROJECT_KEY="-$(printf '%s' "$CWD_FOR_SCOPE" | sed 's|/|-|g' | sed 's|^-||')"
+  # Claude Code's per-project dir replaces BOTH / and . with - (so /.claude -> --claude)
+  PROJECT_KEY="-$(printf '%s' "$CWD_FOR_SCOPE" | sed 's|[/.]|-|g' | sed 's|^-||')"
   PROJECT_DIR="$PROJECTS_DIR/$PROJECT_KEY"
   if [ -d "$PROJECT_DIR" ]; then
     SESSION_FILE=$(find "$PROJECT_DIR" -maxdepth 1 -name "*.jsonl" -type f -print0 2>/dev/null \
