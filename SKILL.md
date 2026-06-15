@@ -98,6 +98,8 @@ A `UserPromptSubmit` hook that fires on every prompt:
    (run `/burn-context-init` once to migrate; the SessionStart router then loads the
    relevant doc automatically based on the files you're touching)
 4. Confirms the user can safely start a new session
+5. Hands you a paste-ready kickoff prompt for the next session (names the area, the first
+   action, and the files to touch — kept tiny because the router rehydrates the full doc)
 
 ## Installation
 

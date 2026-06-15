@@ -145,6 +145,18 @@ updated: 2026-04-07
 | Billing | docs/context/billing.md | Stripe, webhooks, invoices |
 ```
 
+It also hands you a **paste-ready kickoff prompt** for the next session — a few lines that
+name the area, the first action, and the files to touch. Paste it as your first message and
+you're back in flight; the router rehydrates the full doc the moment you open those files, so
+the prompt stays tiny by design:
+
+```text
+Resume Auth. State: JWT + login done, signup form validation pending.
+Start with: finish signup form validation in src/auth/signup.tsx.
+Then: add password reset; wire the reset email template.
+Touch: src/auth/signup.tsx, src/auth/*, src/db/schema.ts.
+```
+
 ### Start a fresh session — it loads only what you touch
 
 ```
@@ -283,7 +295,7 @@ Real stat: one file was read 42 times in a single session. Why? Because after co
 | Session resume | Pre-migration fallback: reads a `## Session Context` block from CLAUDE.md |
 | Model-switch tip | Suggests Haiku when you're on a trivial-edit streak (shown once) |
 | Strategic compact tip | Nudges /compact at the optimal moment: big, re-read-heavy context at a lull |
-| `/save-context` | Save state to CLAUDE.md + post-session burn report |
+| `/save-context` | Save state to the matching context doc + burn report + paste-ready next-session kickoff prompt |
 | `/compact` suggestion | At 15-25 prompts, suggests compact as alternative to new session |
 | Smart rules | Claude pushes back on vague prompts and spec pasting |
 | Subagent alerts | Warns when too many agents are spawned |

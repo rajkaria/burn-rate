@@ -47,7 +47,8 @@ pays for the context it actually needs.
 
 - `scripts/burn-rate-resume.sh` — the router (router mode + legacy fallback)
 - `commands/save-context.md` — writes back into the matching feature doc, not one
-  growing block; refreshes the index
+  growing block; refreshes the index; ends with a paste-ready next-session kickoff prompt
+  (a tiny pointer-at-the-work block — the router rehydrates the full doc on first file touch)
 - `commands/burn-context-init.md` — one-time migration from a legacy block
 - `docs/context/*.md` — the feature docs (this directory)
 - `tests/test-context-router.sh` — smoke tests (routing, cap, staleness, legacy)

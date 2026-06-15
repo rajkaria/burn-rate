@@ -53,4 +53,22 @@ Do the following:
 
 7. **Confirm** — tell the user which doc(s) you updated (with paths) and that they can
    safely start a new session — the router will reload exactly those when they next touch
-   the same files.
+   the same files. Then hand them the kickoff prompt from step 8 to paste into that session.
+
+8. **Emit a next-session kickoff prompt** — end your reply with a fenced ` ```text ` block
+   the user can copy and paste as the FIRST message of their next session to resume right
+   where they left off. Keep it short: the SessionStart router reloads the full feature doc
+   the moment they touch the same files, so this prompt only has to point at the work and
+   name the first concrete action — do NOT restate the whole summary (re-pasting prose is
+   exactly the bloat the router exists to kill). Derive it straight from the `## Next steps`
+   you just wrote; add no new information. Use this shape:
+   ```text
+   Resume <feature>. State: <one line — where things stand>.
+   Start with: <the single most important next action>.
+   Then: <2–3 remaining steps, terse>.
+   Touch: <key file paths — these trigger the router to auto-load docs/context/<feature>.md>.
+   ```
+   The router's SessionStart hook deliberately waits for direction instead of auto-resuming —
+   this prompt *is* that direction, so name the first action concretely. If you updated more
+   than one feature doc, lead with the area to tackle first and add the rest as a single
+   trailing line (`Also pending: <feature> — <one line>`).

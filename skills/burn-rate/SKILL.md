@@ -92,9 +92,14 @@ A `UserPromptSubmit` hook that fires on every prompt:
 ## Command: /save-context
 
 1. Summarizes the current session (decisions, files changed, state, next steps)
-2. Writes/updates the project-root `CLAUDE.md` with a `## Session Context` section
-3. Preserves previous session notes as history
+2. Writes the summary into the matching per-feature doc (`docs/context/<feature>.md`),
+   not a growing block — and refreshes the thin index in `CLAUDE.md`
+3. Falls back to a `## Session Context` block if the project isn't migrated yet
+   (run `/burn-context-init` once to migrate; the SessionStart router then loads the
+   relevant doc automatically based on the files you're touching)
 4. Confirms the user can safely start a new session
+5. Hands you a paste-ready kickoff prompt for the next session (names the area, the first
+   action, and the files to touch — kept tiny because the router rehydrates the full doc)
 
 ## Installation
 
