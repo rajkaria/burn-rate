@@ -25,9 +25,13 @@ the project `CLAUDE.md`.
 
 ## Current state
 
-All features shipped and integration-tested. Latest work: the **Context Router**
-(this session) — replaces the monolithic-CLAUDE.md approach with per-feature docs in
-`docs/context/` loaded on demand. See [context-router.md](context-router.md).
+**v4.2.0 — shipped to `main`, live via symlinks.** Three things landed this session:
+(1) the **Context Router** — per-feature `docs/context/` docs loaded on demand with a
+thin `CLAUDE.md` index ([context-router.md](context-router.md)); (2) three **burn
+levers** — eager-MCP audit in `/burn-lint`, a strategic-compact tip, and re-read-cost in
+`/burn-report` ([reporting.md](reporting.md)); (3) the long-uncommitted **April
+stdin-JSON hook-context fix** plus a worktree project-key bug fix ([hooks.md](hooks.md)).
+Tests: context-router 11/11, burn-levers 10/10. No outstanding bugs.
 
 ## Where things live
 

@@ -28,8 +28,9 @@ which is why `install.sh` is re-run after adding the router.
 ## Versioning
 
 Bump `version` in **both** `.claude-plugin/plugin.json` and `marketplace.json` together.
-Context Router shipped as **4.1.0** (minor — additive, backward compatible via the
-legacy fallback).
+Context Router shipped as **4.1.0**; the three burn levers (MCP audit, strategic-compact,
+re-read cost) + the worktree project-key fix shipped as **4.2.0**. Both minor — additive
+and backward compatible.
 
 ## Gotchas
 

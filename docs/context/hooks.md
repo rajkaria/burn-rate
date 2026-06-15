@@ -40,9 +40,12 @@ not punitive; user keeps control. Disable with `BURN_RATE_SUBAGENT_BUDGET=0`.
 SessionEnd hook. Appends a row to `~/.claude/.burn-rate/history.jsonl` (capped 500 rows,
 ~6 months of daily use). Feeds `/burn-trend`.
 
-## Key fix (2026-04-17)
+## Key fix (stdin hook context)
 
 All session-aware hooks read the hook **context JSON from stdin** (not just
 `CLAUDE_SESSION_ID` env) to find the transcript — env-only lookup caused cross-session
 bleed and false warnings in fresh sessions. `burn-rate.sh`, `burn-rate-log.sh`, and
-`burn-rate-subagent-gate.sh` were patched and validated.
+`burn-rate-subagent-gate.sh` were patched April 2026 and **committed in v4.2.0** (they'd
+sat uncommitted until then). Follow-up: the step-3 fallback is now worktree-safe — the
+project-dir key maps both `/` and `.` to `-` (so `/.claude` → `--claude`), which it
+previously got wrong, silently failing to find the transcript in worktree sessions.
