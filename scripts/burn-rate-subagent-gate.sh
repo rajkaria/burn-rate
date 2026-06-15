@@ -19,10 +19,37 @@ if [ "${BURN_RATE_SUBAGENT_BUDGET:-}" = "0" ]; then
 fi
 
 PROJECTS_DIR="$HOME/.claude/projects"
-SESSION_ID="${CLAUDE_SESSION_ID:-}"
+
+# Hook context via stdin JSON (session_id, transcript_path, cwd).
+HOOK_INPUT=""
+if [ ! -t 0 ]; then
+  HOOK_INPUT=$(cat 2>/dev/null || true)
+fi
+
+SESSION_ID=""
+TRANSCRIPT_PATH=""
+HOOK_CWD=""
+if [ -n "$HOOK_INPUT" ] && command -v python3 >/dev/null 2>&1; then
+  eval "$(printf '%s' "$HOOK_INPUT" | python3 -c '
+import json, sys, shlex
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for k, v in (("SESSION_ID", d.get("session_id", "")),
+             ("TRANSCRIPT_PATH", d.get("transcript_path", "")),
+             ("HOOK_CWD", d.get("cwd", ""))):
+    print(f"{k}={shlex.quote(str(v or \"\"))}")
+' 2>/dev/null)"
+fi
+
+SESSION_ID="${SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 SESSION_FILE=""
 
-if [ -n "$SESSION_ID" ]; then
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  SESSION_FILE="$TRANSCRIPT_PATH"
+fi
+if [ -z "$SESSION_FILE" ] && [ -n "$SESSION_ID" ]; then
   SESSION_FILE=$(find "$PROJECTS_DIR" -maxdepth 2 -name "${SESSION_ID}.jsonl" -type f 2>/dev/null | head -1)
 fi
 if [ -z "$SESSION_FILE" ]; then

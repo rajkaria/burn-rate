@@ -25,24 +25,61 @@ TOKEN_URGENT_AT="${BURN_RATE_TOKEN_URGENT:-100000000}"      # 100M
 # Show dollar cost estimates? Only relevant for API/pay-per-token users.
 SHOW_COST="${BURN_RATE_SHOW_COST:-0}"
 
-# --- Locate current session using CLAUDE_SESSION_ID ---
+# --- Locate current session ---
+# Claude Code passes hook context (session_id, transcript_path, cwd) via stdin JSON,
+# NOT env vars. Read it. Fall back to env var, then to project-scoped most-recent.
 PROJECTS_DIR="$HOME/.claude/projects"
 
 if [ ! -d "$PROJECTS_DIR" ]; then
   exit 0
 fi
 
-SESSION_ID="${CLAUDE_SESSION_ID:-}"
+HOOK_INPUT=""
+if [ ! -t 0 ]; then
+  HOOK_INPUT=$(cat 2>/dev/null || true)
+fi
+
+SESSION_ID=""
+TRANSCRIPT_PATH=""
+HOOK_CWD=""
+if [ -n "$HOOK_INPUT" ] && command -v python3 >/dev/null 2>&1; then
+  eval "$(printf '%s' "$HOOK_INPUT" | python3 -c '
+import json, sys, shlex
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for k, v in (("SESSION_ID", d.get("session_id", "")),
+             ("TRANSCRIPT_PATH", d.get("transcript_path", "")),
+             ("HOOK_CWD", d.get("cwd", ""))):
+    print(f"{k}={shlex.quote(str(v or \"\"))}")
+' 2>/dev/null)"
+fi
+
+SESSION_ID="${SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 SESSION_FILE=""
 
-if [ -n "$SESSION_ID" ]; then
+# 1. Preferred: transcript_path directly from hook input
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  SESSION_FILE="$TRANSCRIPT_PATH"
+fi
+
+# 2. Look up by session_id
+if [ -z "$SESSION_FILE" ] && [ -n "$SESSION_ID" ]; then
   SESSION_FILE=$(find "$PROJECTS_DIR" -maxdepth 2 -name "${SESSION_ID}.jsonl" -type f 2>/dev/null | head -1)
 fi
 
+# 3. Fall back to most-recent jsonl scoped to the *current project* only
 if [ -z "$SESSION_FILE" ]; then
-  SESSION_FILE=$(find "$PROJECTS_DIR" -maxdepth 2 -name "*.jsonl" -type f -print0 2>/dev/null \
-    | xargs -0 ls -t 2>/dev/null \
-    | head -1)
+  CWD_FOR_SCOPE="${HOOK_CWD:-$PWD}"
+  # Claude stores per-project dirs as the cwd with / replaced by -
+  PROJECT_KEY="-$(printf '%s' "$CWD_FOR_SCOPE" | sed 's|/|-|g' | sed 's|^-||')"
+  PROJECT_DIR="$PROJECTS_DIR/$PROJECT_KEY"
+  if [ -d "$PROJECT_DIR" ]; then
+    SESSION_FILE=$(find "$PROJECT_DIR" -maxdepth 1 -name "*.jsonl" -type f -print0 2>/dev/null \
+      | xargs -0 ls -t 2>/dev/null \
+      | head -1)
+  fi
 fi
 
 if [ -z "$SESSION_FILE" ]; then
