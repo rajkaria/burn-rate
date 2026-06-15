@@ -116,43 +116,47 @@ When you see the warning (or when you're done with a task), type:
 You: /save-context
 ```
 
-Claude writes a structured summary to your project's `CLAUDE.md`:
+Claude writes the summary into the **per-feature doc** for the area you worked on
+(`docs/context/<feature>.md`) — not a blob that grows in `CLAUDE.md` every session:
 
 ```markdown
-## Session Context (Last updated: 2026-04-07 14:30)
+docs/context/auth.md
+---
+feature: Auth
+globs: [src/auth/*, src/pages/login.tsx, src/db/schema.ts]
+updated: 2026-04-07
+---
 
-### Current State
-- Auth system working: JWT + refresh tokens implemented
-- Login page done, signup page in progress
-- Database: users table with email/password/refresh_token columns
-
-### Recent Changes
-- Created src/auth/jwt.ts — token generation and validation
-- Created src/pages/login.tsx — login form with error handling
-- Modified src/db/schema.ts — added users table
-
-### Next Steps
-- Finish signup page (form validation pending)
-- Add password reset flow
-- Write auth middleware for protected routes
-
-### Key Decisions
-- JWT over sessions: stateless, works with mobile app later
-- Refresh tokens stored in DB, not cookies
+## Current state
+- JWT + refresh tokens implemented; login done, signup in progress
+## Next steps
+- Finish signup form validation; add password reset
+## Key decisions
+- JWT over sessions (stateless); refresh tokens in DB, not cookies
 ```
 
-### Start a fresh session — zero context loss
+`CLAUDE.md` itself stays thin — just an index pointing at each doc:
+
+```markdown
+## Context index
+| Feature | Doc | Covers |
+|---|---|---|
+| Auth    | docs/context/auth.md    | JWT, login/signup, schema |
+| Billing | docs/context/billing.md | Stripe, webhooks, invoices |
+```
+
+### Start a fresh session — it loads only what you touch
 
 ```
-You: [start new Claude Code session in the same project]
-You: "Continue where I left off. Check CLAUDE.md for context."
+You: [start new Claude Code session, open src/auth/signup.tsx]
 
-Claude: [reads CLAUDE.md]
-"I see auth is done and you need to finish the signup page.
- Let me pick up from the form validation..."
+Claude: I see auth is mid-flight — signup form validation is pending,
+        JWT + login are done. Want to continue there?
 ```
 
-**Two sessions. ~2M tokens total. Instead of one monster session burning 40M+.**
+You didn't tell it to read anything. The **context router** saw you were touching
+`src/auth/*`, matched `auth.md`'s globs, and loaded *only that doc* — not billing, not
+the whole project history. **Each session pays for the context it needs, nothing more.**
 
 ### `/burn-report` — see where your tokens actually went
 
@@ -274,7 +278,9 @@ Real stat: one file was read 42 times in a single session. Why? Because after co
 | `/burn-trend` | Cross-session trends — week-over-week tokens, top projects |
 | Subagent budget gate | Forces confirm after N subagents spawn (catches spec-paste disasters) |
 | Paste saver | Large pastes auto-saved to a file — swap to `@file` on next turn |
-| Session resume | New session? Burn Rate reads CLAUDE.md and primes Claude to continue |
+| Context router | New session loads only the per-feature docs matching the files you're touching |
+| `/burn-context-init` | One-time: split a bloated CLAUDE.md into routable `docs/context/` docs |
+| Session resume | Pre-migration fallback: reads a `## Session Context` block from CLAUDE.md |
 | Model-switch tip | Suggests Haiku when you're on a trivial-edit streak (shown once) |
 | `/save-context` | Save state to CLAUDE.md + post-session burn report |
 | `/compact` suggestion | At 15-25 prompts, suggests compact as alternative to new session |
@@ -297,8 +303,12 @@ export BURN_RATE_SESSION_BUDGET=0     # Override budget in tokens (0 = use plan 
 export BURN_RATE_SUBAGENT_BUDGET=5    # Confirm before spawning >N subagents (0 = disable)
 export BURN_RATE_PASTE_WARN=3000      # Chars threshold for paste saver (default: 3000)
 export BURN_RATE_NO_DIET=1            # Disable paste saver entirely
-export BURN_RATE_NO_RESUME=1          # Disable session auto-resume
-export BURN_RATE_RESUME_MAX_AGE_DAYS=7 # Stale-after days for resume (default: 7)
+export BURN_RATE_NO_RESUME=1          # Disable session auto-resume / context router
+export BURN_RATE_RESUME_MAX_AGE_DAYS=7 # Stale-after days for context docs (default: 7)
+export BURN_RATE_CONTEXT_DIR=docs/context # Where per-feature context docs live
+export BURN_RATE_ROUTER_MAX_DOCS=3    # Max feature docs the router injects (default: 3)
+export BURN_RATE_ROUTER_MAX_CHARS=1500 # Max chars injected per doc (default: 1500)
+export BURN_RATE_NO_ROUTER=1          # Disable the SessionStart context router
 export BURN_RATE_NO_MODEL_TIP=1       # Silence the Haiku suggestion
 ```
 
@@ -381,22 +391,38 @@ Claude: [works on it normally this turn]
 
 `.burn-rate/` is auto-added to `.gitignore`. Disable with `BURN_RATE_NO_DIET=1`, or raise the threshold with `BURN_RATE_PASTE_WARN=10000` if 3K is too tight for your workflow.
 
-### Session auto-resume
+### Context router — loads only what you're working on
 
-Start a new session in a project that has a recent `## Session Context` block in `CLAUDE.md` — Burn Rate reads it and quietly primes Claude with the context:
+A monolithic `CLAUDE.md` is re-sent **in full, every prompt**. Save context session
+after session and that tax compounds. The router fixes it: keep per-feature docs in
+`docs/context/` (each declares which source paths it's about via `globs:` frontmatter)
+and a thin index in `CLAUDE.md`. On session start, Burn Rate looks at which files you've
+been touching — recent commits plus uncommitted changes — and injects **only the
+matching docs**, plus the index:
 
 ```
-[You open a fresh Claude Code session in ./my-saas]
+[You open a fresh Claude Code session and start editing src/auth/signup.tsx]
 
-Claude: I see we left off yesterday with the signup page form validation pending.
-        Auth is done, login is working. Want to continue there, or something else?
+Claude: I see auth is mid-flight — signup validation pending, login + JWT done.
+        (loaded docs/context/auth.md — billing, infra, etc. left out)
 ```
 
-- **Fresh (<7d):** primed silently, Claude acknowledges briefly and waits for your direction.
-- **Stale (>7d):** Claude flags it and asks before using — old context shouldn't ambush you.
-- **Git diverged:** Claude notes that HEAD moved since the block was written.
+- **Capped:** at most `BURN_RATE_ROUTER_MAX_DOCS` (3) docs, ~1500 chars each — it can
+  never re-bloat into the thing it replaced.
+- **Working tree wins:** what you're editing *now* outranks what was merely committed
+  recently, so the router follows your actual task.
+- **Stale (>7d):** flagged, so old context doesn't silently mislead you.
+- **Git diverged:** notes when HEAD has moved past what a doc references.
+- **Index always shown:** Claude can read any other doc on demand.
+- **Not migrated yet?** Run `/burn-context-init` once to split a bloated `CLAUDE.md`
+  into `docs/context/`. Until then the hook falls back to reading a plain
+  `## Session Context` block — nothing breaks.
 
-Never auto-executes anything. Disable with `BURN_RATE_NO_RESUME=1`.
+Never auto-executes anything. Disable with `BURN_RATE_NO_ROUTER=1`.
+
+> **Why not `@import`?** Claude Code loads `@`-imported files eagerly — every session,
+> in full. Splitting a big `CLAUDE.md` into files you `@import` saves *zero* tokens. The
+> router only loads a doc when you're actually working in that area. That's the whole win.
 
 ### Model-switch tip (one-shot Haiku suggestion)
 

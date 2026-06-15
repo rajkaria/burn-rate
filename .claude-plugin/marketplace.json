@@ -13,8 +13,8 @@
     {
       "name": "burn-rate",
       "source": "./",
-      "description": "Real-time session token monitoring — warns before sessions get heavy, detects subagent storms, and saves context across sessions",
-      "version": "4.0.0",
+      "description": "Real-time session token monitoring — warns before sessions get heavy, detects subagent storms, and routes per-feature context across sessions",
+      "version": "4.1.0",
       "author": {
         "name": "rajkaria",
         "url": "https://github.com/rajkaria"

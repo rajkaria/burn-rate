@@ -154,3 +154,92 @@ print(footer())
 print()
 PYEOF
 done
+
+# --- Context Router docs audit (docs/context/) ---
+CTX_DIR="${BURN_RATE_CONTEXT_DIR:-docs/context}"
+if [ -d "$CTX_DIR" ]; then
+  python3 - "$CTX_DIR" << 'PYEOF'
+import sys, os, re
+from datetime import datetime
+
+ctx = sys.argv[1]
+W = 78
+def row(s, W=78):
+    s = s[:W-4]; return "│ " + s + " " * (W - 3 - len(s)) + "│"
+def title(s, W=78):
+    s = f" {s} "; pad = W - 2 - len(s); l = pad // 2
+    return "┌" + "─"*l + s + "─"*(pad-l) + "┐"
+def footer(W=78): return "└" + "─"*(W-2) + "┘"
+
+def frontmatter(text):
+    globs, updated = [], None
+    if not text.startswith("---"):
+        return globs, updated
+    end = text.find("\n---", 3)
+    if end == -1:
+        return globs, updated
+    key = None
+    for raw in text[3:end].splitlines():
+        line = raw.rstrip()
+        m = re.match(r"^(\w[\w-]*):\s*(.*)$", line)
+        if m:
+            key, val = m.group(1), m.group(2).strip()
+            if key == "globs" and val.startswith("[") and val.endswith("]"):
+                globs = [g.strip().strip("'\"") for g in val[1:-1].split(",") if g.strip()]
+            elif key == "updated":
+                updated = val.strip("'\"") or None
+        elif key == "globs" and line.strip().startswith("-"):
+            g = line.strip()[1:].strip().strip("'\"")
+            if g:
+                globs.append(g)
+    return globs, updated
+
+AGING_DAYS = int(os.environ.get("BURN_RATE_CONTEXT_AGING_DAYS", "30"))
+docs = sorted(f for f in os.listdir(ctx) if f.endswith(".md"))
+if docs:
+    print(title("CONTEXT DOCS (docs/context/)"))
+    print(row(f"{len(docs)} feature docs — the router loads these on demand"))
+    print(footer())
+    print()
+    print(title("PER-DOC"))
+    findings = []
+    for fn in docs:
+        fp = os.path.join(ctx, fn)
+        try:
+            text = open(fp, encoding="utf-8", errors="ignore").read()
+        except Exception:
+            continue
+        globs, updated = frontmatter(text)
+        est = len(text) // 4
+        flags = []
+        if not globs and fn not in ("_overview.md", "overview.md"):
+            flags.append("no globs -> UNROUTABLE")
+        if est >= 1200 or text.count("\n") >= 200:
+            flags.append(f"bloated ~{est}t")
+        if updated:
+            try:
+                age = (datetime.now() - datetime.strptime(updated.strip()[:10], "%Y-%m-%d")).days
+                if age > AGING_DAYS:
+                    flags.append(f"aging {age}d")
+            except ValueError:
+                flags.append("bad updated: date")
+        else:
+            flags.append("no updated: date")
+        tag = ("  ! " + "; ".join(flags)) if flags else "  ok"
+        print(row(f"{fn:<26} ~{est:>4}t{tag}"))
+        for fl in flags:
+            findings.append((fn, fl))
+    print(footer())
+    if findings:
+        print()
+        print(title("CONTEXT RECOMMENDATIONS"))
+        if any("UNROUTABLE" in f for _, f in findings):
+            print(row("- Add globs: frontmatter so the router can load these docs"))
+        if any("bloated" in f for _, f in findings):
+            print(row("- Split bloated feature docs - they undercut the router's savings"))
+        if any(("aging" in f or "no updated" in f) for _, f in findings):
+            print(row("- Refresh stale docs via /save-context, or prune dead ones"))
+        print(footer())
+    print()
+PYEOF
+fi

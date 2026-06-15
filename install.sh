@@ -90,7 +90,8 @@ for s in burn-rate.sh burn-report.sh burn-rate-lint.sh burn-rate-log.sh \
 done
 
 # --- Install slash commands ---
-for c in save-context.md burn-rate.md burn-report.md burn-lint.md burn-trend.md; do
+for c in save-context.md burn-rate.md burn-report.md burn-lint.md burn-trend.md \
+         burn-context-init.md; do
   fetch_file "commands/$c" "$COMMANDS_DIR/$c"
   info "Installed /${c%.md} command"
 done
@@ -205,7 +206,8 @@ echo "    - Command:  /burn-rate                      (check stats on demand)"
 echo "    - Command:  /burn-report                    (visual postmortem)"
 echo "    - Command:  /burn-lint                      (CLAUDE.md bloat audit)"
 echo "    - Command:  /burn-trend                     (week-over-week trends)"
-echo "    - Hooks:    SessionStart resume, paste saver, subagent gate, history logger"
+echo "    - Command:  /burn-context-init              (migrate CLAUDE.md to docs/context/)"
+echo "    - Hooks:    SessionStart context router, paste saver, subagent gate, history logger"
 echo "    - Rules:    ~/.claude/CLAUDE.md              (global session rules)"
 echo ""
 echo "  Configuration (env vars in your shell profile):"
@@ -217,6 +219,8 @@ echo "    BURN_RATE_TOKEN_COMPACT=10000000  — compact nudge (token volume)"
 echo "    BURN_RATE_TOKEN_WARN=30000000     — wrap-up nudge (token volume)"
 echo "    BURN_RATE_TOKEN_STRONG=60000000   — strong warning (token volume)"
 echo "    BURN_RATE_TOKEN_URGENT=100000000  — urgent stop (token volume)"
+echo "    BURN_RATE_ROUTER_MAX_DOCS=3       — max feature docs the context router injects"
+echo "    BURN_RATE_NO_ROUTER=1             — disable the SessionStart context router"
 echo ""
 echo "  Start a new Claude Code session to activate."
 echo ""
